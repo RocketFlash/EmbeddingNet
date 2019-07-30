@@ -17,8 +17,8 @@ def plot_grapth(values, y_label, title):
     fig.savefig("plots/{}.png".format(y_label))
 
 
-n_epochs = 100
-n_iterations = 500
+n_epochs = 50
+n_steps_per_epoch = 20
 
 augmentations = A.Compose([
     A.RandomBrightnessContrast(p=0.4),
@@ -43,7 +43,7 @@ model = SiameseNet(input_shape=(256, 256, 3), backbone='resnet18', mode='l2',
                    image_loader=loader, optimizer=optimizer)
 
 train_losses, train_accuracies, val_losses, val_accuracies = model.train(
-    steps_per_epoch=20, epochs=20)
+    steps_per_epoch=n_steps_per_epoch, epochs=n_epochs)
 
 plot_grapth(train_losses, 'train_loss', 'Losses on train')
 plot_grapth(train_accuracies, 'train_acc', 'Accuracies on train')

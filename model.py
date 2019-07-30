@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import keras.backend as K
+import tensorflow as tf
 from keras.models import Model
 from keras import optimizers
 from keras.regularizers import l2
@@ -8,6 +9,7 @@ from keras.utils import plot_model
 from keras.layers import Dense, Input, Lambda, Dropout, Flatten
 from keras.layers import Conv2D, MaxPool2D
 from classification_models import Classifiers
+from keras.callbacks import TensorBoard
 
 
 class SiameseNet:
@@ -18,7 +20,7 @@ class SiameseNet:
 
     """
 
-    def __init__(self, input_shape, image_loader, mode='l1', backbone='resnet50', optimizer=optimizers.Adam(lr=1e-4)):
+    def __init__(self, input_shape, image_loader, mode='l1', backbone='resnet50', optimizer=optimizers.Adam(lr=1e-4), tensorboard_log_path='tf_log'):
         self.input_shape = input_shape
         self.backbone = backbone
         self.mode = mode
@@ -27,6 +29,12 @@ class SiameseNet:
         self._create_model()
         self.data_loader = image_loader
         self.base_model = []
+        if tensorboard_log_path:
+            os.makedirs(tensorboard_log_path, exist_ok=True)
+        self.tensorboard_callback = TensorBoard(
+            tensorboard_log_path) if tensorboard_log_path else None
+        if self.tensorboard_callback:
+            self.tensorboard_callback.set_model(self.model)
 
     def _create_model(self):
 
@@ -100,45 +108,14 @@ class SiameseNet:
         self.model.compile(loss=self.contrastive_loss, metrics=[metric],
                            optimizer=self.optimizer)
 
-    def _write_logs_to_tensorboard(self, current_iteration, train_losses,
-                                   train_accuracies, validation_accuracy,
-                                   evaluate_each):
-        """ Writes the logs to a tensorflow log file
-        This allows us to see the loss curves and the metrics in tensorboard.
-        If we wrote every iteration, the training process would be slow, so 
-        instead we write the logs every evaluate_each iteration.
-        Arguments:
-            current_iteration: iteration to be written in the log file
-            train_losses: contains the train losses from the last evaluate_each
-                iterations.
-            train_accuracies: the same as train_losses but with the accuracies
-                in the training set.
-            validation_accuracy: accuracy in the current one-shot task in the 
-                validation set
-            evaluate each: number of iterations defined to evaluate the one-shot
-                tasks.
-        """
-
-        summary = tf.Summary()
-
-        # Write to log file the values from the last evaluate_every iterations
-        for index in range(0, evaluate_each):
-            value = summary.value.add()
-            value.simple_value = train_losses[index]
-            value.tag = 'Train Loss'
-
-            value = summary.value.add()
-            value.simple_value = train_accuracies[index]
-            value.tag = 'Train Accuracy'
-
-            if index == (evaluate_each - 1):
-                value = summary.value.add()
-                value.simple_value = validation_accuracy
-                value.tag = 'One-Shot Validation Accuracy'
-
-            self.summary_writer.add_summary(
-                summary, current_iteration - evaluate_each + index + 1)
-            self.summary_writer.flush()
+    def write_log(self, names, logs, batch_no):
+        for name, value in zip(names, logs):
+            summary = tf.Summary()
+            summary_value = summary.value.add()
+            summary_value.simple_value = value
+            summary_value.tag = name
+            self.tensorboard_callback.writer.add_summary(summary, batch_no)
+            self.tensorboard_callback.writer.flush()
 
     def contrastive_loss(self, y_true, y_pred):
         '''Contrastive loss from Hadsell-et-al.'06
@@ -174,6 +151,7 @@ class SiameseNet:
         train_losses_epochs = []
         val_accuracies_epochs = []
         val_losses_epochs = []
+        tensorboard_names = ['train_loss', 'train_acc', 'val_loss', 'val_acc']
         for j in range(epochs):
             train_accuracies_it = []
             train_losses_it = []
@@ -187,25 +165,31 @@ class SiameseNet:
             train_accuracy_epoch = sum(
                 train_accuracies_it) / len(train_accuracies_it)
             train_accuracies_epochs.append(train_accuracy_epoch)
-            train_losses_epochs.append(train_losses_epochs)
+            train_losses_epochs.append(train_loss_epoch)
 
             if with_val:
                 val_loss, val_accuracy = self.validate()
                 val_accuracies_epochs.append(val_accuracy)
                 val_losses_epochs.append(val_loss)
                 if verbose:
-                    print('[Epoch {}] train_loss: {} , train_acc: {}, val_loss: {} , val_acc: {}'.fromat(
+                    print('[Epoch {}] train_loss: {} , train_acc: {}, val_loss: {} , val_acc: {}'.format(
                         j, train_loss_epoch, train_accuracy_epoch, val_loss, val_accuracy))
+                logs = [train_loss_epoch, train_accuracy_epoch,
+                        val_loss, val_accuracy]
             else:
                 if verbose:
-                    print('[Epoch {}] train_loss: {} , train_acc: {}'.fromat(
+                    print('[Epoch {}] train_loss: {} , train_acc: {}'.format(
                         j, train_loss_epoch, train_accuracy_epoch))
+                tensorboard_names = tensorboard_names[:2]
+                logs = [train_loss_epoch, train_accuracy_epoch]
+            if self.tensorboard_callback:
+                self.write_log(tensorboard_names, logs, j)
         if with_val:
             return train_losses_epochs, train_accuracies_epochs, val_losses_epochs, val_accuracies_epochs
         else:
             return train_losses_epochs, train_accuracies_epochs
 
-    def validate(self, number_of_comparisons=100, batch_size=8, s="val"):
+    def validate(self, number_of_comparisons=100, batch_size=4, s="val"):
         generator = self.data_loader.generate(batch_size, s=s)
         val_accuracies_it = []
         val_losses_it = []
