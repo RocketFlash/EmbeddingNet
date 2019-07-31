@@ -151,6 +151,8 @@ class SiameseNet:
         train_losses_epochs = []
         val_accuracies_epochs = []
         val_losses_epochs = []
+        best_val_loss = 0.0
+        current_loss = 0.0
         tensorboard_names = ['train_loss', 'train_acc', 'val_loss', 'val_acc']
         for j in range(epochs):
             train_accuracies_it = []
@@ -197,6 +199,7 @@ class SiameseNet:
             pairs, targets = next(generator)
             val_loss_it, val_accuracy_it = self.model.test_on_batch(
                 pairs, targets)
+            print(targets)
             val_accuracies_it.append(val_accuracy_it)
             val_losses_it.append(val_loss_it)
         val_loss_epoch = sum(val_losses_it) / len(val_losses_it)
