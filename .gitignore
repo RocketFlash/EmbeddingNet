@@ -107,3 +107,5 @@ venv.bak/
 *DS_Store*
 tf_log/
 to_test.ipynb
+encodings/
+weights/

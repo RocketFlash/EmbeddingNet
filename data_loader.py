@@ -97,3 +97,10 @@ class SiameseImageLoader:
         while True:
             pairs, targets = self.get_batch(batch_size, s)
             yield (pairs, targets)
+
+    def get_image(self, img_path):
+        img = cv2.imread(img_path)
+        if self.input_shape:
+            img = cv2.resize(
+                img, (self.input_shape[0], self.input_shape[1]))
+        return img

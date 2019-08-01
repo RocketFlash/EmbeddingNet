@@ -1,7 +1,10 @@
 import os
+import glob
 import numpy as np
 import keras.backend as K
 import tensorflow as tf
+import pickle
+import cv2
 from keras.models import Model
 from keras import optimizers
 from keras.regularizers import l2
@@ -20,21 +23,32 @@ class SiameseNet:
 
     """
 
-    def __init__(self, input_shape, image_loader, mode='l1', backbone='resnet50', optimizer=optimizers.Adam(lr=1e-4), tensorboard_log_path='tf_log'):
+    def __init__(self, input_shape, image_loader, mode='l1', backbone='resnet50', optimizer=optimizers.Adam(lr=1e-4), tensorboard_log_path='tf_log/', weights_save_path='weights/'):
         self.input_shape = input_shape
         self.backbone = backbone
         self.mode = mode
         self.optimizer = optimizer
         self.model = []
+        self.base_model = []
         self._create_model()
         self.data_loader = image_loader
-        self.base_model = []
+        self.encoded_training_data = {}
         if tensorboard_log_path:
             os.makedirs(tensorboard_log_path, exist_ok=True)
         self.tensorboard_callback = TensorBoard(
             tensorboard_log_path) if tensorboard_log_path else None
         if self.tensorboard_callback:
+            events_files_list = glob.glob(
+                os.path.join(tensorboard_log_path, 'events*'))
+            for event_file in events_files_list:
+                try:
+                    os.remove(event_file)
+                except:
+                    print("Error while deleting file : ", event_file)
             self.tensorboard_callback.set_model(self.model)
+        self.weights_save_path = weights_save_path
+        if weights_save_path:
+            os.makedirs(weights_save_path, exist_ok=True)
 
     def _create_model(self):
 
@@ -73,7 +87,7 @@ class SiameseNet:
             x = Dropout(0.1)(x)
             x = Dense(256, activation="relu")(x)
             x = Dropout(0.1)(x)
-            encoded_output = Dense(128, activation="relu")(x)
+            encoded_output = Dense(256, activation="relu")(x)
 
             self.base_model = Model(
                 inputs=[backbone_model.input], outputs=[encoded_output])
@@ -105,6 +119,7 @@ class SiameseNet:
 
         print('WHOLE MODEL SUMMARY')
         self.model.summary()
+
         self.model.compile(loss=self.contrastive_loss, metrics=[metric],
                            optimizer=self.optimizer)
 
@@ -145,14 +160,14 @@ class SiameseNet:
             pairs, targets)
         return val_loss, val_accuracy
 
-    def train(self, steps_per_epoch, epochs, with_val=True, batch_size=8, verbose=1):
+    def train(self, steps_per_epoch, epochs, val_steps=100, with_val=True, batch_size=8, verbose=1):
         generator_train = self.data_loader.generate(batch_size, 'train')
         train_accuracies_epochs = []
         train_losses_epochs = []
         val_accuracies_epochs = []
         val_losses_epochs = []
-        best_val_loss = 0.0
-        current_loss = 0.0
+        best_val_accuracy = 0.0
+        current_accuracy = 0.0
         tensorboard_names = ['train_loss', 'train_acc', 'val_loss', 'val_acc']
         for j in range(epochs):
             train_accuracies_it = []
@@ -170,7 +185,8 @@ class SiameseNet:
             train_losses_epochs.append(train_loss_epoch)
 
             if with_val:
-                val_loss, val_accuracy = self.validate()
+                val_loss, val_accuracy = self.validate(
+                    number_of_comparisons=val_steps)
                 val_accuracies_epochs.append(val_accuracy)
                 val_losses_epochs.append(val_loss)
                 if verbose:
@@ -178,6 +194,11 @@ class SiameseNet:
                         j, train_loss_epoch, train_accuracy_epoch, val_loss, val_accuracy))
                 logs = [train_loss_epoch, train_accuracy_epoch,
                         val_loss, val_accuracy]
+
+                if val_accuracy > best_val_accuracy and self.weights_save_path:
+                    best_val_accuracy = val_accuracy
+                    self.base_model.save(
+                        "{}best_model.h5".format(self.weights_save_path))
             else:
                 if verbose:
                     print('[Epoch {}] train_loss: {} , train_acc: {}'.format(
@@ -197,9 +218,13 @@ class SiameseNet:
         val_losses_it = []
         for _ in range(number_of_comparisons):
             pairs, targets = next(generator)
+            # predictions = self.model.predict(pairs)
+
             val_loss_it, val_accuracy_it = self.model.test_on_batch(
                 pairs, targets)
-            print(targets)
+            # print(predictions)
+            # print(targets)
+            # print('================================')
             val_accuracies_it.append(val_accuracy_it)
             val_losses_it.append(val_loss_it)
         val_loss_epoch = sum(val_losses_it) / len(val_losses_it)
@@ -207,16 +232,47 @@ class SiameseNet:
             val_accuracies_it) / len(val_accuracies_it)
         return val_loss_epoch, val_accuracy_epoch
 
-    def generate_encodings(self):
+    def _generate_encoding(self, img_path):
+        img = self.data_loader.get_image(img_path)
+        encoding = self.base_model.predict(np.expand_dims(img, axis=0))
+        return encoding
 
-        paths = self.data_loader.images_paths['train']
-        labels = self.data_loader.images_labels['train']
+    def generate_encodings(self, encodings_path='encodings/', save_file_name='encodings.pkl'):
+        data_paths, data_labels, data_encodings = [], [], []
 
-        data = {}
-        for path in paths:
-            info = {}
-            img = cv2.imread(path)
-            info['encoding'] = self.base_model.predict(img)
+        for img_path, img_label in zip(self.data_loader.images_paths['train'],
+                                       self.data_loader.images_labels['train']):
+            data_paths.append(img_path)
+            data_labels.append(img_label)
+            data_encodings.append(self._generate_encoding(img_path))
+        self.encoded_training_data['paths'] = data_paths
+        self.encoded_training_data['labels'] = data_labels
+        self.encoded_training_data['encodings'] = np.squeeze(
+            np.array(data_encodings))
+        os.makedirs('encodings/', exist_ok=True)
+        f = open(os.path.join(encodings_path, save_file_name), "wb")
+        pickle.dump(self.encoded_training_data, f)
+        f.close()
 
-    def predict(self, batch_size=8):
-        pass
+    def load_encodings(self, path_to_encodings):
+        try:
+            with open(path_to_encodings, 'rb') as f:
+                self.encoded_training_data = pickle.load(f)
+        except:
+            print("Problem with encodings file")
+
+    def calculate_distances(self, encoding):
+        dist = (
+            self.encoded_training_data['encodings'] - np.array(encoding))**2
+        dist = np.sum(dist, axis=1)
+        dist = np.sqrt(dist)
+        return dist
+
+    def predict(self, image_path):
+        img = cv2.imread(image_path)
+        img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
+        encoding = self.base_model.predict(np.expand_dims(img, axis=0))
+        distances = self.calculate_distances(encoding)
+        max_element = np.argmax(distances)
+        predicted_label = self.encoded_training_data['labels'][max_element]
+        return predicted_label
