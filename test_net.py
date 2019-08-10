@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from model import SiameseNet
 from data_loader import SiameseImageLoader
 import matplotlib.pyplot as plt
@@ -22,11 +23,15 @@ def plot_grapth(values, y_label, title, project_name):
 
 project_name = 'road_signs/'
 dataset_path = '/home/rauf/plates_competition/dataset/road_signs/road_signs_separated/'
+# project_name = 'plates/'
+# dataset_path = '/home/rauf/plates_competition/dataset/to_train/'
+
 n_epochs = 1000
-n_steps_per_epoch = 200
-batch_size = 32
+n_steps_per_epoch = 500
+batch_size = 4
 val_steps = 100
-input_shape = (75, 75, 3)
+input_shape = (48, 48, 3)
+# input_shape = (256, 256, 3)
 
 # augmentations = A.Compose([
 #     A.RandomBrightnessContrast(p=0.4),
@@ -51,28 +56,23 @@ optimizer = optimizers.Adam(lr=1e-4)
 # model = SiameseNet(input_shape=(256, 256, 3), backbone='resnet50', mode='l2',
 #                    image_loader=loader, optimizer=optimizer)
 
-model = SiameseNet(input_shape=input_shape, backbone='resnet50', backbone_weights='imagenet', mode='l2',
+model = SiameseNet(input_shape=input_shape, backbone='simple2', backbone_weights='imagenet', mode='l2',
                    image_loader=loader, optimizer=optimizer, project_name=project_name,
-                   freeze_backbone=True)
+                   freeze_backbone=False)
 
 
-def step_decay_schedule(initial_lr=1e-3, decay_factor=0.75, step_size=10):
-    '''
-    Wrapper function to create a LearningRateScheduler with step decay schedule.
-    '''
-    def schedule(epoch):
-        return initial_lr * (decay_factor ** np.floor(epoch/step_size))
-
-    return LearningRateScheduler(schedule)
-
+initial_lr = 1e-4
+decay_factor = 0.99
+step_size = 1
 
 callbacks = [
-    step_decay_schedule(initial_lr=1e-4, decay_factor=0.99, step_size=1),
-    EarlyStopping(patience=50, verbose=1),
-    TensorBoard(log_dir=SiameseNet.tensorboard_log_path),
+    LearningRateScheduler(lambda x: initial_lr *
+                          decay_factor ** np.floor(x/step_size)),
+    EarlyStopping(patience=100, verbose=1),
+    TensorBoard(log_dir=model.tensorboard_log_path),
     # ReduceLROnPlateau(factor=0.9, patience=50,
     #                   min_lr=1e-12, verbose=1),
-    ModelCheckpoint(filepath=os.path.join(SiameseNet.weights_save_path, 'best_model.hd5'), verbose=1, monitor='loss',
+    ModelCheckpoint(filepath=os.path.join(model.weights_save_path, 'best_model_2.h5'), verbose=1, monitor='loss',
                     save_best_only=True)
 ]
 
@@ -97,3 +97,6 @@ model.generate_encodings()
 prediction = model.predict(
     '/home/rauf/plates_competition/dataset/road_signs/road_signs_separated/val/7_1/rtsd-r3_test_009188.png')
 print(prediction)
+
+model_accuracy = model.calculate_prediction_accuracy()
+print('Model accuracy on validation set: {}'.format(model_accuracy))

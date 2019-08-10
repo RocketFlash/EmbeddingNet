@@ -6,12 +6,12 @@ import tensorflow as tf
 import pickle
 import cv2
 import random
-from keras.models import Model
+from keras.models import Model, load_model
 from keras import optimizers
 from keras.regularizers import l2
 from keras.utils import plot_model
 from keras.layers import Dense, Input, Lambda, Dropout, Flatten
-from keras.layers import Conv2D, MaxPool2D
+from keras.layers import Conv2D, MaxPool2D, BatchNormalization
 from classification_models import Classifiers
 
 
@@ -49,17 +49,6 @@ class SiameseNet:
             os.makedirs(self.plots_path, exist_ok=True)
         if self.tensorboard_log_path:
             os.makedirs(self.tensorboard_log_path, exist_ok=True)
-        self.tensorboard_callback = TensorBoard(
-            self.tensorboard_log_path) if tensorboard_log_path else None
-        if self.tensorboard_callback:
-            events_files_list = glob.glob(
-                os.path.join(self.tensorboard_log_path, 'events*'))
-            for event_file in events_files_list:
-                try:
-                    os.remove(event_file)
-                except:
-                    print("Error while deleting file : ", event_file)
-            self.tensorboard_callback.set_model(self.model)
         self.weights_save_path = os.path.join(
             weights_save_path, self.project_name)
         if self.weights_save_path:
@@ -88,6 +77,40 @@ class SiameseNet:
             x = Conv2D(256, (4, 4), activation='relu',
                        kernel_regularizer=l2(2e-4))(x)
             x = Flatten()(x)
+            encoded_output = Dense(4096, activation='sigmoid',
+                                   kernel_regularizer=l2(1e-3))(x)
+            self.base_model = Model(
+                inputs=[input_image], outputs=[encoded_output])
+        elif self.backbone == 'simple2':
+            input_image = Input(self.input_shape)
+            x = Conv2D(32, kernel_size=3, activation='relu',
+                       kernel_regularizer=l2(2e-4))(input_image)
+            x = BatchNormalization()(x)
+            x = Conv2D(32, kernel_size=3, activation='relu',
+                       kernel_regularizer=l2(2e-4))(x)
+            x = BatchNormalization()(x)
+            x = Conv2D(32, kernel_size=5, strides=2, padding='same', activation='relu',
+                       kernel_regularizer=l2(2e-4))(x)
+            x = BatchNormalization()(x)
+            x = Dropout(0.4)(x)
+
+            x = Conv2D(64, kernel_size=3, activation='relu',
+                       kernel_regularizer=l2(2e-4))(x)
+            x = BatchNormalization()(x)
+            x = Conv2D(64, kernel_size=3, activation='relu',
+                       kernel_regularizer=l2(2e-4))(x)
+            x = BatchNormalization()(x)
+            x = Conv2D(64, kernel_size=5, strides=2, padding='same', activation='relu',
+                       kernel_regularizer=l2(2e-4))(x)
+            x = BatchNormalization()(x)
+            x = Dropout(0.4)(x)
+
+            x = Conv2D(128, kernel_size=4, activation='relu',
+                       kernel_regularizer=l2(2e-4))(x)
+            x = BatchNormalization()(x)
+            x = Flatten()(x)
+            x = Dense(512, activation="relu")(x)
+            x = Dropout(0.5)(x)
             encoded_output = Dense(4096, activation='sigmoid',
                                    kernel_regularizer=l2(1e-3))(x)
             self.base_model = Model(
@@ -146,14 +169,6 @@ class SiameseNet:
         self.model.compile(loss=self.contrastive_loss, metrics=[metric],
                            optimizer=self.optimizer)
 
-    def write_log(self, names, logs, batch_no):
-        for name, value in zip(names, logs):
-            summary = tf.Summary()
-            summary_value = summary.value.add()
-            summary_value.simple_value = value
-            summary_value.tag = name
-            self.tensorboard_callback.writer.add_summary(summary, batch_no)
-            self.tensorboard_callback.writer.flush()
 
     def contrastive_loss(self, y_true, y_pred):
         '''Contrastive loss from Hadsell-et-al.'06
@@ -251,6 +266,13 @@ class SiameseNet:
         except:
             print("Problem with encodings file")
 
+    def load_model(self,file_path):
+        self.model = load_model(file_path, 
+                                 custom_objects={'contrastive_loss': self.contrastive_loss, 
+                                                 'accuracy': self.accuracy})
+        self.base_model = Model(inputs=[self.model.layers[2].get_input_at(0)], 
+                                outputs=[self.model.layers[2].layers[-1].output])
+
     def calculate_distances(self, encoding):
         training_encodings = self.encoded_training_data['encodings']
         return np.sqrt(
@@ -259,6 +281,7 @@ class SiameseNet:
     def predict(self, image_path):
         img = cv2.imread(image_path)
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
+        print(img.shape)
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         distances = self.calculate_distances(encoding)
         max_element = np.argmin(distances)
@@ -266,4 +289,11 @@ class SiameseNet:
         return predicted_label
 
     def calculate_prediction_accuracy(self):
-        pass
+        correct = 0
+        total_n_of_images = len(self.data_loader.images_paths['val'])
+        for img_path, img_label in zip(self.data_loader.images_paths['val'],
+                                       self.data_loader.images_labels['val']):
+            prediction = self.predict(img_path)
+            if prediction == img_label:
+                correct+=1
+        return correct/total_n_of_images

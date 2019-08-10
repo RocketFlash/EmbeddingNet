@@ -35,22 +35,22 @@ class SiameseImageLoader:
                         self.images_paths[d].append(root+'/'+f)
                         self.images_labels[d].append(root.split('/')[-1])
 
-    def _get_pair(self, cl1, cl2, idx1, idx2, s='train', with_aug=True):
-        indx_1 = self.indexes[s][cl1][idx1]
-        indx_2 = self.indexes[s][cl2][idx2]
-        img_1 = cv2.imread(self.images_paths[s][indx_1])
-        img_2 = cv2.imread(self.images_paths[s][indx_2])
-        if self.input_shape:
-            img_1 = cv2.resize(
-                img_1, (self.input_shape[0], self.input_shape[1]))
-            img_2 = cv2.resize(
-                img_2, (self.input_shape[0], self.input_shape[1]))
-        if with_aug:
-            img_1 = self.augmentations(image=img_1)['image']
-            img_2 = self.augmentations(image=img_2)['image']
-        return img_1, img_2
 
-    def get_batch(self, batch_size, s='train'):
+    def _get_images_set(self, clsss, idxs, s='train', with_aug=True):
+
+        indxs = [self.indexes[s][cl][idx] for cl, idx in zip(clsss, idxs)]
+        imgs = [cv2.imread(self.images_paths[s][idx]) for idx in indxs]
+
+        if self.input_shape:
+            imgs = [cv2.resize(
+                img, (self.input_shape[0], self.input_shape[1])) for img in imgs]
+
+        if with_aug:
+            imgs = [self.augmentations(image=img)['image'] for img in imgs]
+
+        return imgs
+
+    def get_batch_pairs(self, batch_size,  s='train'):
         pairs = [np.zeros((batch_size, self.input_shape[0], self.input_shape[1], 3)), np.zeros(
             (batch_size, self.input_shape[0], self.input_shape[1], 3))]
         targets = np.zeros((batch_size,))
@@ -70,10 +70,10 @@ class SiameseImageLoader:
             idx1 = indxs[i]
             idx2 = (idx1 + random.randrange(1, selected_class_n_elements)
                     ) % selected_class_n_elements
-            img1, img2 = self._get_pair(
-                selected_class, selected_class, idx1, idx2, s=s, with_aug=with_aug)
-            pairs[0][count, :, :, :] = img1
-            pairs[1][count, :, :, :] = img2
+            imgs = self._get_images_set(
+                [selected_class, selected_class], [idx1, idx2], s=s, with_aug=with_aug)
+            pairs[0][count, :, :, :] = imgs[0]
+            pairs[1][count, :, :, :] = imgs[1]
             targets[i] = 1
             count += 1
 
@@ -84,19 +84,58 @@ class SiameseImageLoader:
             another_class_n_elements = len(self.indexes[s][another_class])
             idx1 = indxs[i]
             idx2 = random.randrange(0, another_class_n_elements)
-            img1, img2 = self._get_pair(
-                selected_class, another_class, idx1, idx2, s=s, with_aug=with_aug)
-            pairs[0][count, :, :, :] = img1
-            pairs[1][count, :, :, :] = img2
+            imgs = self._get_images_set(
+                [selected_class, another_class], [idx1, idx2], s=s, with_aug=with_aug)
+            pairs[0][count, :, :, :] = imgs[0]
+            pairs[1][count, :, :, :] = imgs[1]
             targets[i] = 0
             count += 1
 
         return pairs, targets
 
-    def generate(self, batch_size, s="train"):
+    def get_batch_triplets(self, batch_size,  s='train'):
+        triplets = [np.zeros((batch_size, self.input_shape[0], self.input_shape[1], 3)), 
+                    np.zeros((batch_size, self.input_shape[0], self.input_shape[1], 3)), 
+                    np.zeros((batch_size, self.input_shape[0], self.input_shape[1], 3))]
+        targets = np.zeros((batch_size,))
+
+        count = 0
+
+        for i in range(batch_size):
+            selected_class_idx = random.randrange(0, self.n_classes)
+            selected_class = self.classes[selected_class_idx]
+            selected_class_n_elements = len(self.indexes[s][selected_class])
+            another_class_idx = (
+                selected_class_idx + random.randrange(1, self.n_classes)) % self.n_classes
+            another_class = self.classes[another_class_idx]
+            another_class_n_elements = len(self.indexes[s][another_class])
+
+            indxs = np.random.randint(
+                selected_class_n_elements, size=batch_size)
+
+            with_aug = s == 'train' and self.augmentations
+            idx1 = indxs[i]
+            idx2 = (idx1 + random.randrange(1, selected_class_n_elements)
+                    ) % selected_class_n_elements
+            idx3 = random.randrange(0, another_class_n_elements)
+            imgs = self._get_images_set(
+                [selected_class, selected_class, another_class], [idx1, idx2, idx3], s=s, with_aug=with_aug)
+            
+            triplets[0][count, :, :, :] = imgs[0]
+            triplets[1][count, :, :, :] = imgs[1]
+            triplets[2][count, :, :, :] = imgs[2]
+            targets[i] = 1
+            count += 1
+
+        return triplets, targets
+
+    def generate(self, batch_size, mode='pair', s="train"):
         while True:
-            pairs, targets = self.get_batch(batch_size, s)
-            yield (pairs, targets)
+            if mode == 'pair':
+                data, targets = self.get_batch_pairs(batch_size, s)
+            if mode == 'triplet':
+                data, targets = self.get_batch_triplets(batch_size, s)
+            yield (data, targets)
 
     def get_image(self, img_path):
         img = cv2.imread(img_path)
