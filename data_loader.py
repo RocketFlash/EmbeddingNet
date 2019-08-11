@@ -129,11 +129,11 @@ class SiameseImageLoader:
 
         return triplets, targets
 
-    def generate(self, batch_size, mode='pair', s="train"):
+    def generate(self, batch_size, mode='siamese', s="train"):
         while True:
-            if mode == 'pair':
+            if mode == 'siamese':
                 data, targets = self.get_batch_pairs(batch_size, s)
-            if mode == 'triplet':
+            elif mode == 'triplet':
                 data, targets = self.get_batch_triplets(batch_size, s)
             yield (data, targets)
 

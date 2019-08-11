@@ -3,7 +3,6 @@ import glob
 import numpy as np
 import keras.backend as K
 import tensorflow as tf
-import pickle
 import cv2
 import random
 from keras.models import Model, load_model
@@ -11,20 +10,23 @@ from keras import optimizers
 from keras.regularizers import l2
 from keras.utils import plot_model
 from keras.layers import Dense, Input, Lambda, Dropout, Flatten
-from keras.layers import Conv2D, MaxPool2D, BatchNormalization
+from keras.layers import Conv2D, MaxPool2D, BatchNormalization, concatenate
 from classification_models import Classifiers
-
+import utils
+import pickle
 
 
 class SiameseNet:
     """
     SiameseNet for image classification
-    mode = 'l1' -> l1_loss
-    mode = 'l2' -> l2_loss
-
+    distance_type = 'l1' -> l1_loss
+    distance_type = 'l2' -> l2_loss
+    
+    mode = 'siamese' -> Siamese network
+    mode = 'triplet' -> Triplen network
     """
 
-    def __init__(self, input_shape, image_loader, mode='l1', backbone='resnet50',
+    def __init__(self, input_shape, image_loader, mode='siamese', distance_type ='l1', backbone='resnet50',
                  backbone_weights = 'imagenet',
                  optimizer=optimizers.Adam(lr=1e-4), tensorboard_log_path='tf_log/',
                  weights_save_path='weights/', plots_path='plots/', encodings_path='encodings/',
@@ -32,6 +34,7 @@ class SiameseNet:
         self.input_shape = input_shape
         self.backbone = backbone
         self.backbone_weights = backbone_weights
+        self.distance_type = distance_type
         self.mode = mode
         self.project_name = project_name
         self.optimizer = optimizer
@@ -54,15 +57,14 @@ class SiameseNet:
         if self.weights_save_path:
             os.makedirs(self.weights_save_path, exist_ok=True)
 
-        self._create_model()
+        if self.mode == 'siamese':
+            self._create_model_siamese()
+        elif self.mode == 'triplet':
+            self._create_model_triplet()
         self.data_loader = image_loader
         self.encoded_training_data = {}
 
-    def _create_model(self):
-
-        input_image_1 = Input(self.input_shape)
-        input_image_2 = Input(self.input_shape)
-
+    def _create_base_model(self):
         if self.backbone == 'simple':
             input_image = Input(self.input_shape)
             x = Conv2D(64, (10, 10), activation='relu',
@@ -134,11 +136,20 @@ class SiameseNet:
 
             self.base_model = Model(
                 inputs=[backbone_model.input], outputs=[encoded_output])
+        pass
+
+
+    def _create_model_siamese(self):
+
+        input_image_1 = Input(self.input_shape)
+        input_image_2 = Input(self.input_shape)
+
+        self._create_base_model()
 
         image_encoding_1 = self.base_model(input_image_1)
         image_encoding_2 = self.base_model(input_image_2)
 
-        if self.mode == 'l1':
+        if self.distance_type == 'l1':
             L1_layer = Lambda(
                 lambda tensors: K.abs(tensors[0] - tensors[1]))
             distance = L1_layer([image_encoding_1, image_encoding_2])
@@ -146,7 +157,7 @@ class SiameseNet:
             prediction = Dense(units=1, activation='sigmoid')(distance)
             metric = 'binary_accuracy'
 
-        elif self.mode == 'l2':
+        elif self.distance_type == 'l2':
 
             L2_layer = Lambda(
                 lambda tensors: K.sqrt(K.maximum(K.sum(K.square(tensors[0] - tensors[1]), axis=1, keepdims=True), K.epsilon())))
@@ -169,6 +180,23 @@ class SiameseNet:
         self.model.compile(loss=self.contrastive_loss, metrics=[metric],
                            optimizer=self.optimizer)
 
+    def _create_model_triplet(self):
+        input_image_a = Input(self.input_shape)
+        input_image_p = Input(self.input_shape)
+        input_image_n = Input(self.input_shape)
+
+        self._create_base_model()
+
+        image_encoding_a = self.base_model(input_image_a)
+        image_encoding_p = self.base_model(input_image_p)
+        image_encoding_n = self.base_model(input_image_n)
+
+        merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n], 
+                                    axis=-1, name='merged_layer')
+        self.model  = Model(inputs=[input_image_a,input_image_p, input_image_n], 
+                            outputs=merged_vector)
+        self.model.compile(loss=self.triplet_loss, optimizer=self.optimizer)
+
 
     def contrastive_loss(self, y_true, y_pred):
         '''Contrastive loss from Hadsell-et-al.'06
@@ -178,6 +206,40 @@ class SiameseNet:
         sqaure_pred = K.square(y_pred)
         margin_square = K.square(K.maximum(margin - y_pred, 0))
         return K.mean(y_true * sqaure_pred + (1 - y_true) * margin_square)
+
+    def triplet_loss(self, y_true, y_pred, alpha = 0.4):
+        """
+        Implementation of the triplet loss function
+        Arguments:
+        y_true -- true labels, required when you define a loss in Keras, you don't need it in this function.
+        y_pred -- python list containing three objects:
+                anchor -- the encodings for the anchor data
+                positive -- the encodings for the positive data (similar to anchor)
+                negative -- the encodings for the negative data (different from anchor)
+        Returns:
+        loss -- real number, value of the loss
+        """
+        print('y_pred.shape = ',y_pred)
+        
+        total_lenght = y_pred.shape.as_list()[-1]
+    #     print('total_lenght=',  total_lenght)
+    #     total_lenght =12
+        print(y_pred)
+        anchor = y_pred[:,0:int(total_lenght*1/3)]
+        positive = y_pred[:,int(total_lenght*1/3):int(total_lenght*2/3)]
+        negative = y_pred[:,int(total_lenght*2/3):int(total_lenght*3/3)]
+
+        # distance between the anchor and the positive
+        pos_dist = K.sum(K.square(anchor-positive),axis=1)
+
+        # distance between the anchor and the negative
+        neg_dist = K.sum(K.square(anchor-negative),axis=1)
+
+        # compute loss
+        basic_loss = pos_dist-neg_dist+alpha
+        loss = K.maximum(basic_loss,0.0)
+    
+        return loss
 
     def accuracy(self, y_true, y_pred):
         '''Compute classification accuracy with a fixed threshold on distances.
@@ -200,8 +262,8 @@ class SiameseNet:
 
     def train_generator(self, steps_per_epoch, epochs, callbacks = [], val_steps=100, with_val=True, batch_size=8, verbose=1):
 
-        train_generator = self.data_loader.generate(batch_size, s="train")
-        val_generator = self.data_loader.generate(batch_size, s="val")
+        train_generator = self.data_loader.generate(batch_size, mode=self.mode, s="train")
+        val_generator = self.data_loader.generate(batch_size, mode=self.mode, s="val")
         
         history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
                                  verbose=verbose, validation_data = val_generator, validation_steps = val_steps, callbacks=callbacks)
@@ -213,13 +275,9 @@ class SiameseNet:
         val_losses_it = []
         for _ in range(number_of_comparisons):
             pairs, targets = next(generator)
-            # predictions = self.model.predict(pairs)
 
             val_loss_it, val_accuracy_it = self.model.test_on_batch(
                 pairs, targets)
-            # print(predictions)
-            # print(targets)
-            # print('================================')
             val_accuracies_it.append(val_accuracy_it)
             val_losses_it.append(val_loss_it)
         val_loss_epoch = sum(val_losses_it) / len(val_losses_it)
@@ -260,18 +318,15 @@ class SiameseNet:
         f.close()
 
     def load_encodings(self, path_to_encodings):
-        try:
-            with open(path_to_encodings, 'rb') as f:
-                self.encoded_training_data = pickle.load(f)
-        except:
-            print("Problem with encodings file")
+        utils.load_encodings(path_to_encodings)
 
     def load_model(self,file_path):
         self.model = load_model(file_path, 
                                  custom_objects={'contrastive_loss': self.contrastive_loss, 
-                                                 'accuracy': self.accuracy})
-        self.base_model = Model(inputs=[self.model.layers[2].get_input_at(0)], 
-                                outputs=[self.model.layers[2].layers[-1].output])
+                                                 'accuracy': self.accuracy,
+                                                 'triplet_loss': self.triplet_loss})
+        self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)], 
+                                outputs=[self.model.layers[3].layers[-1].output])
 
     def calculate_distances(self, encoding):
         training_encodings = self.encoded_training_data['encodings']
@@ -281,7 +336,7 @@ class SiameseNet:
     def predict(self, image_path):
         img = cv2.imread(image_path)
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
-        print(img.shape)
+        
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         distances = self.calculate_distances(encoding)
         max_element = np.argmin(distances)

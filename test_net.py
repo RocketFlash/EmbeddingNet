@@ -20,18 +20,19 @@ def plot_grapth(values, y_label, title, project_name):
 
     fig.savefig("plots/{}{}.png".format(project_name, y_label))
 
-
+input_shape = (48, 48, 3)
 project_name = 'road_signs/'
 dataset_path = '/home/rauf/plates_competition/dataset/road_signs/road_signs_separated/'
+
+# input_shape = (256, 256, 3)
 # project_name = 'plates/'
 # dataset_path = '/home/rauf/plates_competition/dataset/to_train/'
 
 n_epochs = 1000
 n_steps_per_epoch = 500
-batch_size = 4
+batch_size = 64
 val_steps = 100
-input_shape = (48, 48, 3)
-# input_shape = (256, 256, 3)
+
 
 # augmentations = A.Compose([
 #     A.RandomBrightnessContrast(p=0.4),
@@ -53,11 +54,9 @@ loader = SiameseImageLoader(
 
 optimizer = optimizers.Adam(lr=1e-4)
 # optimizer = optimizers.RMSprop(lr=1e-5)
-# model = SiameseNet(input_shape=(256, 256, 3), backbone='resnet50', mode='l2',
-#                    image_loader=loader, optimizer=optimizer)
 
-model = SiameseNet(input_shape=input_shape, backbone='simple2', backbone_weights='imagenet', mode='l2',
-                   image_loader=loader, optimizer=optimizer, project_name=project_name,
+model = SiameseNet(input_shape=input_shape, backbone='simple2', backbone_weights='imagenet', mode='triplet',
+                   image_loader=loader, optimizer=optimizer, project_name=project_name, distance_type='l2',
                    freeze_backbone=False)
 
 
@@ -72,7 +71,7 @@ callbacks = [
     TensorBoard(log_dir=model.tensorboard_log_path),
     # ReduceLROnPlateau(factor=0.9, patience=50,
     #                   min_lr=1e-12, verbose=1),
-    ModelCheckpoint(filepath=os.path.join(model.weights_save_path, 'best_model_2.h5'), verbose=1, monitor='loss',
+    ModelCheckpoint(filepath=os.path.join(model.weights_save_path, 'best_model_3.h5'), verbose=1, monitor='val_loss',
                     save_best_only=True)
 ]
 
@@ -82,14 +81,14 @@ callbacks = [
 H = model.train_generator(steps_per_epoch=n_steps_per_epoch, callbacks=callbacks,
                           val_steps=val_steps, epochs=n_epochs)
 train_losses = H.history['loss']
-train_accuracies = H.history['accuracy']
+# train_accuracies = H.history['accuracy']
 val_losses = H.history['val_loss']
-val_accuracies = H.history['val_accuracy']
+# val_accuracies = H.history['val_accuracy']
 
 plot_grapth(train_losses, 'train_loss', 'Losses on train', project_name)
-plot_grapth(train_accuracies, 'train_acc', 'Accuracies on train', project_name)
+# plot_grapth(train_accuracies, 'train_acc', 'Accuracies on train', project_name)
 plot_grapth(val_losses, 'val_loss', 'Losses on val', project_name)
-plot_grapth(val_accuracies, 'val_acc', 'Accuracies on val', project_name)
+# plot_grapth(val_accuracies, 'val_acc', 'Accuracies on val', project_name)
 
 
 model.generate_encodings()
