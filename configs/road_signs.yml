@@ -1,8 +1,8 @@
 input_shape :  [48, 48, 3]
-encodings_len: 1024
+encodings_len: 4096
 mode : 'triplet'
 distance_type : 'l1'
-backbone : 'resnet50'
+backbone : 'simple2'
 backbone_weights : 'imagenet'
 optimizer : 'adam'
 learning_rate : 0.0001

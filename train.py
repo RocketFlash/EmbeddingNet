@@ -23,21 +23,16 @@ callbacks = [
                           decay_factor ** np.floor(x/step_size)),
     EarlyStopping(patience=50, verbose=1),
     TensorBoard(log_dir=model.tensorboard_log_path),
-    # ReduceLROnPlateau(factor=0.9, patience=50,
-    #                   min_lr=1e-12, verbose=1),
-    ModelCheckpoint(filepath=os.path.join(model.weights_save_path, 'best_model_0.h5'),
+    ModelCheckpoint(filepath=os.path.join(model.weights_save_path, 'best_model.h5'),
                     verbose=1, monitor='val_loss', save_best_only=True)
 ]
 
-H = model.train_generator(steps_per_epoch=n_steps_per_epoch, callbacks=callbacks,
-                          val_steps=val_steps, epochs=n_epochs)
+model.train_generator(steps_per_epoch=n_steps_per_epoch, callbacks=callbacks,
+                      val_steps=val_steps, epochs=n_epochs)
 
 
 model.generate_encodings()
 # model.load_encodings('encodings/encodings.pkl')
-prediction = model.predict(
-    '/home/rauf/plates_competition/dataset/road_signs/road_signs_separated/val/7_1/rtsd-r3_test_009188.png')
-print(prediction)
 
 model_accuracy = model.calculate_prediction_accuracy()
 print('Model accuracy on validation set: {}'.format(model_accuracy))

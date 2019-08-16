@@ -215,7 +215,7 @@ class SiameseNet:
         f.close()
 
     def load_encodings(self, path_to_encodings):
-        utils.load_encodings(path_to_encodings)
+        self.encoded_training_data = utils.load_encodings(path_to_encodings)
 
     def load_model(self,file_path):
         self.model = load_model(file_path, 
