@@ -1,9 +1,9 @@
-from model import SiameseNet
+from siamese_net.model import SiameseNet
 
-model = SiameseNet('SiameseNet/configs/road_signs.yml')
-model.load_model('{}best_model_4.h5'.format(model.weights_save_path))
-model.load_encodings('{}encodings.pkl'.format(model.encodings_path))
+model = SiameseNet()
+model.load_model('weights/road_signs/best_model_4.h5')
+model.load_encodings('encodings/road_signs/encodings.pkl')
 
-
-model_accuracy = model.calculate_prediction_accuracy()
-print('Model accuracy on validation set: {}'.format(model_accuracy))
+image_path = '/home/rauf/datasets/road_signs/road_signs_separated/val/1_1/rtsd-r1_train_006470.png'
+model_prediction = model.predict(image_path)
+print('Model prediction: {}'.format(model_prediction))

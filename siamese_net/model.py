@@ -27,41 +27,41 @@ class SiameseNet:
     mode = 'triplet' -> Triplen network
     """
 
-    def __init__(self,  cfg_file):
-        
-        params = parse_net_params(cfg_file)
-        self.input_shape = params['input_shape']
-        self.encodings_len = params['encodings_len']
-        self.backbone = params['backbone']
-        self.backbone_weights = params['backbone_weights']
-        self.distance_type = params['distance_type']
-        self.mode = params['mode']
-        self.project_name = params['project_name']
-        self.optimizer = params['optimizer']
-        self.freeze_backbone = params['freeze_backbone']
-        self.data_loader = params['loader']
-        
-        self.model = []
-        self.base_model = []
-        self.l_model = []
+    def __init__(self,  cfg_file=None):
+        if cfg_file:
+            params = parse_net_params(cfg_file)
+            self.input_shape = params['input_shape']
+            self.encodings_len = params['encodings_len']
+            self.backbone = params['backbone']
+            self.backbone_weights = params['backbone_weights']
+            self.distance_type = params['distance_type']
+            self.mode = params['mode']
+            self.project_name = params['project_name']
+            self.optimizer = params['optimizer']
+            self.freeze_backbone = params['freeze_backbone']
+            self.data_loader = params['loader']
+            
+            self.model = []
+            self.base_model = []
+            self.l_model = []
 
-        self.encodings_path = params['encodings_path']
-        self.plots_path = params['plots_path']
-        self.tensorboard_log_path = params['tensorboard_log_path']
-        self.weights_save_path = params['weights_save_path']
-        self.model_save_name = params['model_save_name']
+            self.encodings_path = params['encodings_path']
+            self.plots_path = params['plots_path']
+            self.tensorboard_log_path = params['tensorboard_log_path']
+            self.weights_save_path = params['weights_save_path']
+            self.model_save_name = params['model_save_name']
 
-        os.makedirs(self.encodings_path, exist_ok=True)
-        os.makedirs(self.plots_path, exist_ok=True)
-        os.makedirs(self.tensorboard_log_path, exist_ok=True)
-        os.makedirs(self.weights_save_path, exist_ok=True)
+            os.makedirs(self.encodings_path, exist_ok=True)
+            os.makedirs(self.plots_path, exist_ok=True)
+            os.makedirs(self.tensorboard_log_path, exist_ok=True)
+            os.makedirs(self.weights_save_path, exist_ok=True)
 
-        if self.mode == 'siamese':
-            self._create_model_siamese()
-        elif self.mode == 'triplet':
-            self._create_model_triplet()
-        
-        self.encoded_training_data = {}
+            if self.mode == 'siamese':
+                self._create_model_siamese()
+            elif self.mode == 'triplet':
+                self._create_model_triplet()
+            
+            self.encoded_training_data = {}
 
 
     def _create_base_model(self):      
@@ -219,6 +219,7 @@ class SiameseNet:
                                  custom_objects={'contrastive_loss': lac.contrastive_loss, 
                                                  'accuracy': lac.accuracy,
                                                  'triplet_loss': lac.triplet_loss})
+        self.input_shape = list(self.model.inputs[0].shape[1:])
         self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)], 
                                 outputs=[self.model.layers[3].layers[-1].output])
         self.base_model._make_predict_function()
