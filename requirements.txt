@@ -1,0 +1,6 @@
+image-classifiers
+keras
+tensorflow-gpu
+matplotlib
+albumentations
+pydot

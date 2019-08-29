@@ -5,8 +5,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 import yaml
 from keras import optimizers
-from augmentations import get_aug
-from data_loader import SiameseImageLoader
+from .augmentations import get_aug
+from .data_loader import SiameseImageLoader
 
 
 def load_encodings(path_to_encodings):
@@ -96,13 +96,20 @@ def parse_net_params(filename='configs/road_signs.yml'):
         augmentations = None
 
     params = {k: v for k, v in cfg.items() if k not in ['optimizer']}
-    params['encodings_path'] = os.path.join(cfg['encodings_path'],
+
+    current_directory = os.path.dirname(os.path.abspath(__file__))
+    print(current_directory)
+    params['encodings_path'] = os.path.join(current_directory,
+                                            cfg['encodings_path'],
                                             cfg['project_name'])
-    params['plots_path'] = os.path.join(cfg['plots_path'],
+    params['plots_path'] = os.path.join(current_directory,
+                                        cfg['plots_path'],
                                         cfg['project_name'])
-    params['tensorboard_log_path'] = os.path.join(cfg['tensorboard_log_path'],
+    params['tensorboard_log_path'] = os.path.join(current_directory,
+                                                  cfg['tensorboard_log_path'],
                                                   cfg['project_name'])
-    params['weights_save_path'] = os.path.join(cfg['weights_save_path'],
+    params['weights_save_path'] = os.path.join(current_directory,
+                                               cfg['weights_save_path'],
                                                cfg['project_name'])
 
     if 'dataset_path' in cfg:

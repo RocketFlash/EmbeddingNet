@@ -7,15 +7,13 @@ import cv2
 import random
 from keras.models import Model, load_model
 from keras import optimizers
-from keras.utils import plot_model
 from keras.layers import Dense, Input, Lambda, Dropout, Flatten
 from keras.layers import Conv2D, MaxPool2D, BatchNormalization, concatenate
 from classification_models import Classifiers
-import utils
 import pickle
-import losses_and_accuracies as lac
-from utils import parse_net_params
-from backbones import get_backbone
+from . import losses_and_accuracies as lac
+from .utils import parse_net_params, load_encodings
+from .backbones import get_backbone
 import matplotlib.pyplot as plt
 
 
@@ -48,11 +46,13 @@ class SiameseNet:
         self.l_model = []
 
         self.encodings_path = params['encodings_path']
+        self.configs_path = params['configs_path']
         self.plots_path = params['plots_path']
         self.tensorboard_log_path = params['tensorboard_log_path']
         self.weights_save_path = params['weights_save_path']
         
         os.makedirs(self.encodings_path, exist_ok=True)
+        os.makedirs(self.configs_path, exist_ok=True)
         os.makedirs(self.plots_path, exist_ok=True)
         os.makedirs(self.tensorboard_log_path, exist_ok=True)
         os.makedirs(self.weights_save_path, exist_ok=True)
@@ -105,7 +105,6 @@ class SiameseNet:
         self.model = Model(
             inputs=[input_image_1, input_image_2], outputs=prediction)
 
-        plot_model(self.model, to_file='{}model.png'.format(self.plots_path))
         print('Base model summary')
         self.base_model.summary()
 
@@ -131,7 +130,6 @@ class SiameseNet:
         self.model  = Model(inputs=[input_image_a,input_image_p, input_image_n], 
                             outputs=merged_vector)
         
-        plot_model(self.model, to_file='{}model.png'.format(self.plots_path))
         print('Base model summary')
         self.base_model.summary()
 
@@ -215,7 +213,7 @@ class SiameseNet:
         f.close()
 
     def load_encodings(self, path_to_encodings):
-        self.encoded_training_data = utils.load_encodings(path_to_encodings)
+        self.encoded_training_data = load_encodings(path_to_encodings)
 
     def load_model(self,file_path):
         self.model = load_model(file_path, 
@@ -224,16 +222,20 @@ class SiameseNet:
                                                  'triplet_loss': lac.triplet_loss})
         self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)], 
                                 outputs=[self.model.layers[3].layers[-1].output])
+        self.base_model._make_predict_function()
 
     def calculate_distances(self, encoding):
         training_encodings = self.encoded_training_data['encodings']
         return np.sqrt(
             np.sum((training_encodings - np.array(encoding))**2, axis=1))
 
-    def predict(self, image_path):
-        img = cv2.imread(image_path)
+    def predict(self, image):
+        if type(image) is str:
+            img = cv2.imread(image)
+        else:
+            img = image
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
-        
+        print(img.shape)
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         distances = self.calculate_distances(encoding)
         max_element = np.argmin(distances)

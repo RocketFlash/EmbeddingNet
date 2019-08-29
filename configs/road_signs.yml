@@ -10,7 +10,7 @@ project_name : 'road_signs/'
 freeze_backbone : True
 
 #paths
-dataset_path : '/home/rauf/plates_competition/dataset/road_signs/road_signs_separated/'
+dataset_path : '/home/rauf/dataset/road_signs/road_signs_separated/'
 tensorboard_log_path : 'tf_log/'
 weights_save_path : 'weights/'
 plots_path : 'plots/'
