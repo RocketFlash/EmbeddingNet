@@ -87,6 +87,9 @@ def parse_net_params(filename='configs/road_signs.yml'):
         optimizer = optimizers.Adam(lr=learning_rate)
     elif cfg['optimizer'] == 'rms_prop':
         optimizer = optimizers.RMSprop(lr=learning_rate)
+    elif cfg['optimizer'] == 'radam':
+        from keras_radam import RAdam
+        optimizer = RAdam()
     else:
         optimizer = optimizers.SGD(lr=learning_rate)
 
@@ -105,7 +108,7 @@ def parse_net_params(filename='configs/road_signs.yml'):
                                                   cfg['project_name'])
     params['weights_save_path'] = os.path.join(cfg['weights_save_path'],
                                                cfg['project_name'])
-
+    params['model_save_name'] = cfg['model_save_name']
     if 'dataset_path' in cfg:
         params['loader'] = SiameseImageLoader(cfg['dataset_path'],
                                               input_shape=cfg['input_shape'],

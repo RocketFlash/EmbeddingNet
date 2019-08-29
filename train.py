@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from model import SiameseNet
+from siamese_net.model import SiameseNet
 from keras.callbacks import TensorBoard, LearningRateScheduler
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
@@ -21,7 +21,7 @@ callbacks = [
                           decay_factor ** np.floor(x/step_size)),
     EarlyStopping(patience=50, verbose=1),
     TensorBoard(log_dir=model.tensorboard_log_path),
-    ModelCheckpoint(filepath=os.path.join(model.weights_save_path, 'best_model_4.h5'),
+    ModelCheckpoint(filepath=os.path.join(model.weights_save_path, model.model_save_name),
                     verbose=1, monitor='val_loss', save_best_only=True)
 ]
 

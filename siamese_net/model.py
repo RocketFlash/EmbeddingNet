@@ -11,9 +11,9 @@ from keras.layers import Dense, Input, Lambda, Dropout, Flatten
 from keras.layers import Conv2D, MaxPool2D, BatchNormalization, concatenate
 from classification_models import Classifiers
 import pickle
-from . import losses_and_accuracies as lac
 from .utils import parse_net_params, load_encodings
 from .backbones import get_backbone
+from . import losses_and_accuracies as lac
 import matplotlib.pyplot as plt
 
 
@@ -49,7 +49,8 @@ class SiameseNet:
         self.plots_path = params['plots_path']
         self.tensorboard_log_path = params['tensorboard_log_path']
         self.weights_save_path = params['weights_save_path']
-        
+        self.model_save_name = params['model_save_name']
+
         os.makedirs(self.encodings_path, exist_ok=True)
         os.makedirs(self.plots_path, exist_ok=True)
         os.makedirs(self.tensorboard_log_path, exist_ok=True)
