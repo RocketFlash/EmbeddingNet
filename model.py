@@ -46,13 +46,11 @@ class SiameseNet:
         self.l_model = []
 
         self.encodings_path = params['encodings_path']
-        self.configs_path = params['configs_path']
         self.plots_path = params['plots_path']
         self.tensorboard_log_path = params['tensorboard_log_path']
         self.weights_save_path = params['weights_save_path']
         
         os.makedirs(self.encodings_path, exist_ok=True)
-        os.makedirs(self.configs_path, exist_ok=True)
         os.makedirs(self.plots_path, exist_ok=True)
         os.makedirs(self.tensorboard_log_path, exist_ok=True)
         os.makedirs(self.weights_save_path, exist_ok=True)
@@ -235,7 +233,6 @@ class SiameseNet:
         else:
             img = image
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
-        print(img.shape)
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         distances = self.calculate_distances(encoding)
         max_element = np.argmin(distances)
