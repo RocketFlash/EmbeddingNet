@@ -10,7 +10,7 @@ def contrastive_loss(y_true, y_pred):
     margin_square = K.square(K.maximum(margin - y_pred, 0))
     return K.mean(y_true * sqaure_pred + (1 - y_true) * margin_square)
 
-def triplet_loss(y_true, y_pred, alpha = 0.4):
+def triplet_loss(y_true, y_pred, alpha = 0.5):
     """
     Implementation of the triplet loss function
     Arguments:

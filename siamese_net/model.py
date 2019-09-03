@@ -215,10 +215,12 @@ class SiameseNet:
         self.encoded_training_data = load_encodings(path_to_encodings)
 
     def load_model(self,file_path):
+        from keras_radam import RAdam
         self.model = load_model(file_path, 
                                  custom_objects={'contrastive_loss': lac.contrastive_loss, 
                                                  'accuracy': lac.accuracy,
-                                                 'triplet_loss': lac.triplet_loss})
+                                                 'triplet_loss': lac.triplet_loss,
+                                                 'RAdam': RAdam})
         self.input_shape = list(self.model.inputs[0].shape[1:])
         self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)], 
                                 outputs=[self.model.layers[3].layers[-1].output])

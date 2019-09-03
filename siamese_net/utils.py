@@ -89,7 +89,7 @@ def parse_net_params(filename='configs/road_signs.yml'):
         optimizer = optimizers.RMSprop(lr=learning_rate)
     elif cfg['optimizer'] == 'radam':
         from keras_radam import RAdam
-        optimizer = RAdam()
+        optimizer = RAdam(learning_rate)
     else:
         optimizer = optimizers.SGD(lr=learning_rate)
 

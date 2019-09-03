@@ -10,9 +10,9 @@ project_name : 'road_signs/'
 freeze_backbone : True
 
 #paths
-dataset_path : '/home/rauf/datasets/road_signs/road_signs_separated/'
+dataset_path : '/home/rauf/datasets/road_signs_merged/'
 tensorboard_log_path : 'tf_log/'
 weights_save_path : 'weights/'
 plots_path : 'plots/'
 encodings_path : 'encodings/'
-model_save_name : 'best_model_simple2.h5'
+model_save_name : 'best_model_simple2_merged.h5'

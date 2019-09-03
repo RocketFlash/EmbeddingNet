@@ -10,15 +10,16 @@ n_steps_per_epoch = 600
 batch_size = 8
 val_steps = 100
 
-model = SiameseNet('configs/road_signs.yml')
+model = SiameseNet('configs/road_signs_simple2_merged_dataset.yml')
 
 initial_lr = 1e-4
-decay_factor = 0.99
+decay_factor = 0.95
 step_size = 1
 
 callbacks = [
     LearningRateScheduler(lambda x: initial_lr *
                           decay_factor ** np.floor(x/step_size)),
+    ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=4, verbose=1),
     EarlyStopping(patience=50, verbose=1),
     TensorBoard(log_dir=model.tensorboard_log_path),
     ModelCheckpoint(filepath=os.path.join(model.weights_save_path, model.model_save_name),
@@ -29,7 +30,7 @@ model.train_generator(steps_per_epoch=n_steps_per_epoch, callbacks=callbacks,
                       val_steps=val_steps, epochs=n_epochs)
 
 
-model.generate_encodings()
+model.generate_encodings(save_file_name='encodings_simple2_merged.pkl', max_num_samples_of_each_classes=30, shuffle = True)
 
 model_accuracy = model.calculate_prediction_accuracy()
 print('Model accuracy on validation set: {}'.format(model_accuracy))

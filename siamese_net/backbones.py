@@ -64,7 +64,7 @@ def get_backbone(input_shape,encodings_len=4096,backbone_type='simple',backbone_
                                         include_top=False)
 
             if freeze_backbone:
-                for layer in backbone_model.layers:
+                for layer in backbone_model.layers[:-2]:
                     layer.trainable = False
 
             after_backbone = backbone_model.output

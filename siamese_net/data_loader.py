@@ -10,21 +10,20 @@ class SiameseImageLoader:
     Image loader for Siamese network
     """
 
-    def __init__(self, dataset_path, number_of_classes=2, input_shape=None, augmentations=None, data_subsets=['train', 'val']):
+    def __init__(self, dataset_path, input_shape=None, augmentations=None, data_subsets=['train', 'val']):
         self.dataset_path = dataset_path
         self.data_subsets = data_subsets
         self.images_paths = {}
         self.images_labels = {}
         self.input_shape = input_shape
-        self.number_of_classes = number_of_classes
         self.augmentations = augmentations
         self.current_idx = {d: 0 for d in data_subsets}
         self._load_images_paths()
-        self.classes = list(set(self.images_labels['train']))
-        self.n_classes = len(self.classes)
+        self.classes = {s: list(set(self.images_labels[s])) for s in data_subsets}
+        self.n_classes = {s:len(self.classes[s]) for s in data_subsets}
         self.n_samples = {d: len(self.images_paths[d]) for d in data_subsets}
         self.indexes = {d: {cl: np.where(np.array(self.images_labels[d]) == cl)[
-            0] for cl in self.classes} for d in data_subsets}
+            0] for cl in self.classes[d]} for d in data_subsets}
 
     def _load_images_paths(self):
         for d in self.data_subsets:
@@ -57,8 +56,8 @@ class SiameseImageLoader:
 
         n_same_class = batch_size // 2
 
-        selected_class_idx = random.randrange(0, self.n_classes)
-        selected_class = self.classes[selected_class_idx]
+        selected_class_idx = random.randrange(0, self.n_classes[s])
+        selected_class = self.classes[s][selected_class_idx]
         selected_class_n_elements = len(self.indexes[s][selected_class])
 
         indxs = np.random.randint(
@@ -79,8 +78,8 @@ class SiameseImageLoader:
 
         for i in range(n_same_class, batch_size):
             another_class_idx = (
-                selected_class_idx + random.randrange(1, self.n_classes)) % self.n_classes
-            another_class = self.classes[another_class_idx]
+                selected_class_idx + random.randrange(1, self.n_classes[s])) % self.n_classes[s]
+            another_class = self.classes[s][another_class_idx]
             another_class_n_elements = len(self.indexes[s][another_class])
             idx1 = indxs[i]
             idx2 = random.randrange(0, another_class_n_elements)
@@ -103,12 +102,12 @@ class SiameseImageLoader:
         count = 0
 
         for i in range(batch_size):
-            selected_class_idx = random.randrange(0, self.n_classes)
-            selected_class = self.classes[selected_class_idx]
+            selected_class_idx = random.randrange(0, self.n_classes[s])
+            selected_class = self.classes[s][selected_class_idx]
             selected_class_n_elements = len(self.indexes[s][selected_class])
             another_class_idx = (
-                selected_class_idx + random.randrange(1, self.n_classes)) % self.n_classes
-            another_class = self.classes[another_class_idx]
+                selected_class_idx + random.randrange(1, self.n_classes[s])) % self.n_classes[s]
+            another_class = self.classes[s][another_class_idx]
             another_class_n_elements = len(self.indexes[s][another_class])
 
             indxs = np.random.randint(
