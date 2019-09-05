@@ -3,6 +3,12 @@ import cv2
 import numpy as np
 import random
 from matplotlib import pyplot as plt
+from itertools import combinations
+from sklearn.metrics import pairwise_distances
+
+# TODO
+# -[ ] Implement online semi-hard triplets mining
+# -[ ] Implement offline semi-hard triplets mining
 
 
 class SiameseImageLoader:
@@ -10,7 +16,7 @@ class SiameseImageLoader:
     Image loader for Siamese network
     """
 
-    def __init__(self, dataset_path, input_shape=None, augmentations=None, data_subsets=['train', 'val']):
+    def __init__(self, dataset_path, margin=0.5, input_shape=None, augmentations=None, data_subsets=['train', 'val']):
         self.dataset_path = dataset_path
         self.data_subsets = data_subsets
         self.images_paths = {}
@@ -19,11 +25,13 @@ class SiameseImageLoader:
         self.augmentations = augmentations
         self.current_idx = {d: 0 for d in data_subsets}
         self._load_images_paths()
-        self.classes = {s: list(set(self.images_labels[s])) for s in data_subsets}
-        self.n_classes = {s:len(self.classes[s]) for s in data_subsets}
+        self.classes = {
+            s: list(set(self.images_labels[s])) for s in data_subsets}
+        self.n_classes = {s: len(self.classes[s]) for s in data_subsets}
         self.n_samples = {d: len(self.images_paths[d]) for d in data_subsets}
         self.indexes = {d: {cl: np.where(np.array(self.images_labels[d]) == cl)[
             0] for cl in self.classes[d]} for d in data_subsets}
+        self.margin = margin
 
     def _load_images_paths(self):
         for d in self.data_subsets:
@@ -36,8 +44,10 @@ class SiameseImageLoader:
                         self.images_labels[d].append(root.split('/')[-1])
 
     def _get_images_set(self, clsss, idxs, s='train', with_aug=True):
-
-        indxs = [self.indexes[s][cl][idx] for cl, idx in zip(clsss, idxs)]
+        if type(clsss) is list:
+            indxs = [self.indexes[s][cl][idx] for cl, idx in zip(clsss, idxs)]
+        else:
+            indxs = [self.indexes[s][clsss][idx] for idx in idxs]
         imgs = [cv2.imread(self.images_paths[s][idx]) for idx in indxs]
 
         if self.input_shape:
@@ -129,12 +139,106 @@ class SiameseImageLoader:
 
         return triplets, targets
 
+    def get_batch_triplets_batch_all(self):
+        pass
+    
+    def hardest_negative(self, loss_values):
+        hard_negative = np.argmax(loss_values)
+        return hard_negative if loss_values[hard_negative] > 0 else None
+
+    def random_hard_negative(self, loss_values):
+        hard_negatives = np.where(loss_values > 0)[0]
+        return np.random.choice(hard_negatives) if len(hard_negatives) > 0 else None
+
+    def semihard_negative(self, loss_values):
+        semihard_negatives = np.where(np.logical_and(loss_values < self.margin, loss_values > 0))[0]
+        return np.random.choice(semihard_negatives) if len(semihard_negatives) > 0 else None
+
+
+    def get_batch_triplets_mining(self, 
+                                  embedding_model, 
+                                  n_classes, 
+                                  n_samples, 
+                                  negative_selection_mode='semihard', 
+                                  s='train'):
+        if negative_selection_mode == 'semihard':
+            negative_selection_fn = self.semihard_negative
+        elif negative_selection_mode == 'hardest':
+            negative_selection_fn = self.hardest_negative
+        else:
+            negative_selection_fn = self.random_hard_negative
+
+        selected_classes_idxs = np.random.choice(
+            self.n_classes[s], size=n_classes, replace=False)
+        selected_classes = [self.classes[s][cl] for cl in selected_classes_idxs]
+        selected_classes_n_elements = [
+            self.indexes[s][cl].shape[0] for cl in selected_classes]
+        
+        selected_images = [np.random.choice(
+            cl, size=n_samples, replace=False) for cl in selected_classes_n_elements]
+
+        all_embeddings_list = []
+        all_images_list = []
+        with_aug = s == 'train' and self.augmentations
+        for idx, cl_img_idxs in enumerate(selected_images):
+            images = self._get_images_set(
+                selected_classes[idx], cl_img_idxs, s='train', with_aug=with_aug)
+            images = np.array(images)
+            all_images_list.append(images)
+            embeddings = embedding_model.predict(images)
+            all_embeddings_list.append(embeddings)
+        all_embeddings = np.vstack(all_embeddings_list)
+        all_images = np.vstack(all_images_list)
+        distance_matrix = pairwise_distances(all_embeddings)
+        
+        triplet_anchors = []
+        triplet_positives = []
+        triplet_negatives = []
+        targets = []
+        for idx, selected_class in enumerate(selected_classes):
+            current_class_mask = np.zeros(n_classes*n_samples, dtype=bool)
+            current_class_mask[idx*n_samples:(idx+1)*n_samples] = True
+            other_classes_mask = np.logical_not(current_class_mask)
+            positive_indices = np.where(current_class_mask)[0]
+            negative_indices = np.where(other_classes_mask)[0]
+            anchor_positives = np.array(
+                list(combinations(positive_indices, 2)))
+
+            ap_distances = distance_matrix[anchor_positives[:,0], anchor_positives[:,1]]
+            for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
+                loss_values = ap_distance - distance_matrix[anchor_positive[0], negative_indices] + self.margin
+                loss_values = np.array(loss_values)
+                hard_negative = negative_selection_fn(loss_values)
+                if hard_negative is not None:
+                    hard_negative = negative_indices[hard_negative]
+                    triplet_anchors.append(all_images[anchor_positive[0]])
+                    triplet_positives.append(all_images[anchor_positive[1]])
+                    triplet_negatives.append(all_images[hard_negative])
+                    targets.append(1)
+        triplet_anchors = np.array(triplet_anchors)
+        triplet_positives = np.array(triplet_positives)
+        triplet_negatives = np.array(triplet_negatives)
+        targets = np.array(targets)
+
+
+        triplets = [triplet_anchors, triplet_positives, triplet_negatives]
+        return triplets, targets
+
     def generate(self, batch_size, mode='siamese', s='train'):
         while True:
             if mode == 'siamese':
                 data, targets = self.get_batch_pairs(batch_size, s)
             elif mode == 'triplet':
                 data, targets = self.get_batch_triplets(batch_size, s)
+            yield (data, targets)
+
+    def generate_mining(self, embedding_model, n_classes, n_samples, negative_selection_mode='semihard', s='train'):
+        while True:
+            data, targets = self.get_batch_triplets_mining(embedding_model,
+                                                                   n_classes, 
+                                                                   n_samples,
+                                                                   negative_selection_mode='semihard', 
+                                                                   s=s)
             yield (data, targets)
 
     def get_image(self, img_path):
@@ -144,13 +248,9 @@ class SiameseImageLoader:
                 img, (self.input_shape[0], self.input_shape[1]))
         return img
 
-    def plot_batch(self, batch_size, mode='triplets', s='train'):
-        if mode == 'triplets':
-            data, targets = self.get_batch_triplets(batch_size, s)
-        else:
-            data, targets = self.get_batch_pairs(batch_size, s)
+    def plot_batch(self, data, targets):
         num_imgs = data[0].shape[0]
-        it_val = 3 if mode == 'triplets' else 2
+        it_val = len(data)
         fig, axs = plt.subplots(num_imgs, it_val, figsize=(
             30, 50), facecolor='w', edgecolor='k')
         fig.subplots_adjust(hspace=.5, wspace=.001)

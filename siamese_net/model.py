@@ -40,6 +40,7 @@ class SiameseNet:
             self.optimizer = params['optimizer']
             self.freeze_backbone = params['freeze_backbone']
             self.data_loader = params['loader']
+            self.embeddings_normalization = params['embeddings_normalization']
             
             self.model = []
             self.base_model = []
@@ -68,6 +69,7 @@ class SiameseNet:
         self.base_model = get_backbone(input_shape=self.input_shape,
                                        encodings_len=self.encodings_len,
                                        backbone_type=self.backbone,
+                                       embeddings_normalization=self.embeddings_normalization,
                                        backbone_weights=self.backbone_weights,
                                        freeze_backbone=self.freeze_backbone)
         
@@ -79,7 +81,8 @@ class SiameseNet:
         input_image_2 = Input(self.input_shape)
 
         self._create_base_model()
-
+        self.base_model._make_predict_function()
+        
         image_encoding_1 = self.base_model(input_image_1)
         image_encoding_2 = self.base_model(input_image_2)
 
@@ -119,7 +122,7 @@ class SiameseNet:
         input_image_n = Input(self.input_shape)
 
         self._create_base_model()
-
+        self.base_model._make_predict_function()
         image_encoding_a = self.base_model(input_image_a)
         image_encoding_p = self.base_model(input_image_p)
         image_encoding_n = self.base_model(input_image_n)
@@ -156,6 +159,25 @@ class SiameseNet:
 
         train_generator = self.data_loader.generate(batch_size, mode=self.mode, s="train")
         val_generator = self.data_loader.generate(batch_size, mode=self.mode, s="val")
+        
+        history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
+                                 verbose=verbose, validation_data = val_generator, validation_steps = val_steps, callbacks=callbacks)
+        if self.plots_path:
+            self.plot_grapths(history)
+        return history
+    
+    def train_generator_mining(self, 
+                               steps_per_epoch, 
+                               epochs, callbacks = [], 
+                               val_steps=100, 
+                               with_val=True, 
+                               n_classes=4, 
+                               n_samples=4,
+                               negative_selection_mode='semihard', 
+                               verbose=1):
+
+        train_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, negative_selection_mode=negative_selection_mode, s="train")
+        val_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, negative_selection_mode=negative_selection_mode, s="val")
         
         history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
                                  verbose=verbose, validation_data = val_generator, validation_steps = val_steps, callbacks=callbacks)

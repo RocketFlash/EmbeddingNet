@@ -10,7 +10,8 @@ n_steps_per_epoch = 600
 batch_size = 8
 val_steps = 100
 
-model = SiameseNet('configs/road_signs_simple2_merged_dataset.yml')
+config_name = 'resnext50_merged_dataset'
+model = SiameseNet('configs/road_signs_{}.yml'.format(config_name))
 
 initial_lr = 1e-4
 decay_factor = 0.95
@@ -26,11 +27,19 @@ callbacks = [
                     verbose=1, monitor='val_loss', save_best_only=True)
 ]
 
-model.train_generator(steps_per_epoch=n_steps_per_epoch, callbacks=callbacks,
-                      val_steps=val_steps, epochs=n_epochs)
+# model.train_generator(steps_per_epoch=n_steps_per_epoch, callbacks=callbacks,
+#                       val_steps=val_steps, epochs=n_epochs)
 
+model.train_generator_mining(steps_per_epoch=n_steps_per_epoch, 
+                             epochs=n_epochs,
+                             callbacks = callbacks, 
+                             val_steps=100, 
+                             n_classes=4, 
+                             n_samples=4,
+                             negative_selection_mode='semihard')
 
-model.generate_encodings(save_file_name='encodings_simple2_merged.pkl', max_num_samples_of_each_classes=30, shuffle = True)
+model.generate_encodings(save_file_name='encodings_{}.pkl'.format(config_name),
+                         max_num_samples_of_each_classes=30, shuffle=True)
 
 model_accuracy = model.calculate_prediction_accuracy()
 print('Model accuracy on validation set: {}'.format(model_accuracy))
