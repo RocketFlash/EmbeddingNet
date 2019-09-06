@@ -10,8 +10,8 @@ n_steps_per_epoch = 600
 batch_size = 8
 val_steps = 100
 
-config_name = 'resnext50_merged_dataset'
-model = SiameseNet('configs/road_signs_{}.yml'.format(config_name))
+config_name = 'road_signs_simple2_merged_dataset'
+model = SiameseNet('configs/{}.yml'.format(config_name))
 
 initial_lr = 1e-4
 decay_factor = 0.95
@@ -34,7 +34,7 @@ model.train_generator_mining(steps_per_epoch=n_steps_per_epoch,
                              epochs=n_epochs,
                              callbacks = callbacks, 
                              val_steps=100, 
-                             n_classes=4, 
+                             n_classes=10, 
                              n_samples=4,
                              negative_selection_mode='semihard')
 

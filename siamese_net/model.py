@@ -1,21 +1,17 @@
 import os
-import glob
 import numpy as np
 import keras.backend as K
-import tensorflow as tf
 import cv2
 import random
 from keras.models import Model, load_model
 from keras import optimizers
-from keras.layers import Dense, Input, Lambda, Dropout, Flatten
-from keras.layers import Conv2D, MaxPool2D, BatchNormalization, concatenate
-from classification_models import Classifiers
+from keras.layers import Dense, Input, Lambda, concatenate
 import pickle
 from .utils import parse_net_params, load_encodings
 from .backbones import get_backbone
 from . import losses_and_accuracies as lac
 import matplotlib.pyplot as plt
-
+from sklearn.neighbors import KNeighborsClassifier
 
 class SiameseNet:
     """
@@ -41,7 +37,8 @@ class SiameseNet:
             self.freeze_backbone = params['freeze_backbone']
             self.data_loader = params['loader']
             self.embeddings_normalization = params['embeddings_normalization']
-            
+            self.margin = params['margin']
+
             self.model = []
             self.base_model = []
             self.l_model = []
@@ -82,7 +79,7 @@ class SiameseNet:
 
         self._create_base_model()
         self.base_model._make_predict_function()
-        
+
         image_encoding_1 = self.base_model(input_image_1)
         image_encoding_2 = self.base_model(input_image_2)
 
@@ -138,7 +135,7 @@ class SiameseNet:
         print('Whole model summary')
         self.model.summary()
 
-        self.model.compile(loss=lac.triplet_loss, optimizer=self.optimizer)
+        self.model.compile(loss=lac.triplet_loss(self.margin), optimizer=self.optimizer)
 
 
     def train_on_batch(self, batch_size=8, s="train"):
@@ -177,8 +174,9 @@ class SiameseNet:
                                verbose=1):
 
         train_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, negative_selection_mode=negative_selection_mode, s="train")
-        val_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, negative_selection_mode=negative_selection_mode, s="val")
-        
+        # val_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, negative_selection_mode=negative_selection_mode, s="val")
+        val_generator = self.data_loader.generate(8, mode=self.mode, s="val")
+
         history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
                                  verbose=verbose, validation_data = val_generator, validation_steps = val_steps, callbacks=callbacks)
         if self.plots_path:
@@ -228,7 +226,9 @@ class SiameseNet:
         self.encoded_training_data['labels'] = data_labels
         self.encoded_training_data['encodings'] = np.squeeze(
             np.array(data_encodings))
-
+        self.encoded_training_data['knn_classifier'] = KNeighborsClassifier(n_neighbors=1)
+        self.encoded_training_data['knn_classifier'].fit(self.encoded_training_data['encodings'],
+                                                         self.encoded_training_data['labels'])
         f = open(os.path.join(self.encodings_path, save_file_name), "wb")
         pickle.dump(self.encoded_training_data, f)
         f.close()
@@ -241,7 +241,7 @@ class SiameseNet:
         self.model = load_model(file_path, 
                                  custom_objects={'contrastive_loss': lac.contrastive_loss, 
                                                  'accuracy': lac.accuracy,
-                                                 'triplet_loss': lac.triplet_loss,
+                                                 'loss_function': lac.triplet_loss(self.margin),
                                                  'RAdam': RAdam})
         self.input_shape = list(self.model.inputs[0].shape[1:])
         self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)], 
@@ -265,12 +265,22 @@ class SiameseNet:
         predicted_label = self.encoded_training_data['labels'][max_element]
         return predicted_label
 
+    def predict_knn(self, image):
+        if type(image) is str:
+            img = cv2.imread(image)
+        else:
+            img = image
+        img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
+        encoding = self.base_model.predict(np.expand_dims(img, axis=0))
+        predicted_label = self.encoded_training_data['knn_classifier'].predict(encoding)
+        return predicted_label
+
     def calculate_prediction_accuracy(self):
         correct = 0
         total_n_of_images = len(self.data_loader.images_paths['val'])
         for img_path, img_label in zip(self.data_loader.images_paths['val'],
                                        self.data_loader.images_labels['val']):
-            prediction = self.predict(img_path)
+            prediction = self.predict_knn(img_path)[0]
             if prediction == img_label:
                 correct+=1
         return correct/total_n_of_images

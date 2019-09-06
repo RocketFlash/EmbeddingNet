@@ -215,6 +215,13 @@ class SiameseImageLoader:
                     triplet_positives.append(all_images[anchor_positive[1]])
                     triplet_negatives.append(all_images[hard_negative])
                     targets.append(1)
+
+        if len(triplet_anchors) == 0:
+            triplet_anchors.append(all_images[anchor_positive[0]])
+            triplet_positives.append(all_images[anchor_positive[1]])
+            triplet_negatives.append(all_images[negative_indices[0]])
+            targets.append(1)
+        
         triplet_anchors = np.array(triplet_anchors)
         triplet_positives = np.array(triplet_positives)
         triplet_negatives = np.array(triplet_negatives)

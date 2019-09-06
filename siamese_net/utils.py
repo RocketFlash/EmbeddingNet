@@ -111,6 +111,7 @@ def parse_net_params(filename='configs/road_signs.yml'):
     params['model_save_name'] = cfg['model_save_name']
     if 'dataset_path' in cfg:
         params['loader'] = SiameseImageLoader(cfg['dataset_path'],
+                                              margin = cfg['margin'],
                                               input_shape=cfg['input_shape'],
                                               augmentations=augmentations)
 

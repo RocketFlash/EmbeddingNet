@@ -1,5 +1,6 @@
 input_shape :  [48, 48, 3]
 encodings_len: 256
+margin: 0.5
 mode : 'triplet'
 distance_type : 'l1'
 backbone : 'resnext50'
