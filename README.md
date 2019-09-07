@@ -1,6 +1,6 @@
 # Siamese and Triplet networks for image classification
 
-This repository contains implementation of a deep neural networks for embeddings learning using Siamese and Triplets approaches with different negative samples mining strategies.
+This repository contains Keras implementation of a deep neural networks for embeddings learning using Siamese and Triplets approaches with different negative samples mining strategies.
 
 # Installation
 
@@ -83,5 +83,10 @@ Is is also possible to use [test_network.ipynb](https://github.com/RocketFlash/S
 
 Result encodings could be visualized interactively using **plot_tsne_interactive** function in [utils.py](https://github.com/RocketFlash/SiameseNet/blob/master/embedding_net/utils.py).
 
-t-SNE plot of russian traffic sign images embeddings (107 classes):
+t-SNE plots of russian traffic sign images embeddings (107 classes)
+
+Before training:
+![t-SNE before](images/t-sne_without_training.png)
+
+After training:
 ![t-SNE example](images/t-sne.png)

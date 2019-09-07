@@ -6,11 +6,11 @@ from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
 
 n_epochs = 1000
-n_steps_per_epoch = 600
+n_steps_per_epoch = 50
 val_batch_size = 8
 val_steps = 100
 
-config_name = 'road_signs_resnext50_merged_dataset'
+config_name = 'plates'
 model = EmbeddingNet('configs/{}.yml'.format(config_name))
 
 initial_lr = 1e-4
@@ -34,9 +34,9 @@ model.train_generator_mining(steps_per_epoch=n_steps_per_epoch,
                              epochs=n_epochs,
                              callbacks = callbacks, 
                              val_steps=100, 
-                             n_classes=20, 
+                             n_classes=2, 
                              n_samples=4,
-                             negative_selection_mode='hardest')
+                             negative_selection_mode='semihard')
 
 model.generate_encodings(save_file_name='encodings_{}.pkl'.format(config_name),
                          max_num_samples_of_each_classes=30, shuffle=True)

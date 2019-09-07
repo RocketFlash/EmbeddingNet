@@ -1,14 +1,16 @@
 input_shape :  [128, 128, 3]
-encodings_len: 1024
+encodings_len: 256
+margin: 0.5
 mode : 'triplet'
 distance_type : 'l1'
-backbone : 'resnet50'
+backbone : 'resnext50'
 backbone_weights : 'imagenet'
-optimizer : 'adam'
+optimizer : 'radam'
 learning_rate : 0.0001
 project_name : 'plates/'
 freeze_backbone : True
 augmentation_type : 'default'
+embeddings_normalization: True
 
 #paths
 dataset_path : '/home/rauf/plates_competition/dataset/to_train/'
@@ -16,3 +18,4 @@ tensorboard_log_path : 'tf_log/'
 weights_save_path : 'weights/'
 plots_path : 'plots/'
 encodings_path : 'encodings/'
+model_save_name : 'best_model_simple2_plates.h5'
