@@ -4,6 +4,10 @@ This repository contains implementation of a deep neural networks for embeddings
 
 # Installation
 
+```bash
+git clone git@github.com:RocketFlash/EmbeddingNet.git
+```
+
 ## Install dependencies
 
 ### Requirements
@@ -17,6 +21,8 @@ This repository contains implementation of a deep neural networks for embeddings
 - [albumentations](https://github.com/albu/albumentations) - for online augmentation during training
 - [image-classifiers](https://github.com/qubvel/classification_models) - for different backbone models
 - [keras-rectified-adam](https://github.com/CyberZHG/keras-radam) - for cool state-of-the-art optimization
+
+Requirements could be installed using the following command:
 
 ```bash
 $ pip3 install -r requirements.txt
