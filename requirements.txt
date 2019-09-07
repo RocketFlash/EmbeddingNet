@@ -3,4 +3,6 @@ keras
 tensorflow-gpu
 matplotlib
 albumentations
-pydot
+scikit-learn
+opencv-python
+keras-rectified-adam

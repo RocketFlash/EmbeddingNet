@@ -1,9 +1,22 @@
-from siamese_net.model import SiameseNet
+from embedding_net.model import EmbeddingNet
+import argparse
 
-model = SiameseNet()
-model.load_model('weights/road_signs/best_model_4.h5')
-model.load_encodings('encodings/road_signs/encodings.pkl')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--weights", type=str,
+                        help="path to trained model weights file")
+    parser.add_argument("--encodings", type=str,
+                        help="path to trained model encodings file")
+    parser.add_argument("--image", type=str, help="path to image file")
+    opt = parser.parse_args()
 
-image_path = '/home/rauf/datasets/road_signs/road_signs_separated/val/1_1/rtsd-r1_train_006470.png'
-model_prediction = model.predict(image_path)
-print('Model prediction: {}'.format(model_prediction))
+    weights_path = opt.weights
+    encodings_path = opt.encodings
+    image_path = opt.image
+
+    model = EmbeddingNet()
+    model.load_model(weights_path)
+    model.load_encodings(encodings_path)
+
+    model_prediction = model.predict(image_path)
+    print('Model prediction: {}'.format(model_prediction))
