@@ -90,4 +90,4 @@ def get_backbone(input_shape,
         base_model = Model(
             inputs=[backbone_model.input], outputs=[encoded_output])
 
-    return base_model
+    return base_model, backbone_model

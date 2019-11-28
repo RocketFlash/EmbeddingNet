@@ -13,6 +13,10 @@ from . import losses_and_accuracies as lac
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
 
+# TODO 
+# [] - implement magnet loss
+# [] - finalize settings with l1 and l2 losses
+
 class EmbeddingNet:
     """
     SiameseNet for image classification
@@ -42,6 +46,7 @@ class EmbeddingNet:
             self.model = []
             self.base_model = []
             self.l_model = []
+            self.backbone_model = []
 
             self.encodings_path = params['encodings_path']
             self.plots_path = params['plots_path']
@@ -65,7 +70,7 @@ class EmbeddingNet:
 
 
     def _create_base_model(self):      
-        self.base_model = get_backbone(input_shape=self.input_shape,
+        self.base_model, self.backbone_model = get_backbone(input_shape=self.input_shape,
                                        encodings_len=self.encodings_len,
                                        backbone_type=self.backbone,
                                        embeddings_normalization=self.embeddings_normalization,
@@ -176,7 +181,6 @@ class EmbeddingNet:
                                verbose=1):
 
         train_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, margin=self.margin, negative_selection_mode=negative_selection_mode, s="train")
-        # val_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, negative_selection_mode=negative_selection_mode, s="val")
         val_generator = self.data_loader.generate(val_batch, mode=self.mode, s="val")
 
         history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
@@ -203,10 +207,12 @@ class EmbeddingNet:
 
     def _generate_encoding(self, img_path):
         img = self.data_loader.get_image(img_path)
+        if img is None:
+            return None
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         return encoding
 
-    def generate_encodings(self, save_file_name='encodings.pkl', max_num_samples_of_each_classes=10, shuffle = True):
+    def generate_encodings(self, save_file_name='encodings.pkl', max_num_samples_of_each_classes=10, knn_k = 1, shuffle = True):
         data_paths, data_labels, data_encodings = [], [], []
         classes_counter = {}
 
@@ -219,16 +225,18 @@ class EmbeddingNet:
                                        self.data_loader.images_labels['train']):
             if img_label not in classes_counter:
                 classes_counter[img_label] = 0
-            classes_counter[img_label] += 1
             if classes_counter[img_label] < max_num_samples_of_each_classes:
-                data_paths.append(img_path)
-                data_labels.append(img_label)
-                data_encodings.append(self._generate_encoding(img_path))
+                encod = self._generate_encoding(img_path)
+                if encod is not None:
+                    data_paths.append(img_path)
+                    data_labels.append(img_label)
+                    data_encodings.append(encod)
+                    classes_counter[img_label] += 1
         self.encoded_training_data['paths'] = data_paths
         self.encoded_training_data['labels'] = data_labels
         self.encoded_training_data['encodings'] = np.squeeze(
             np.array(data_encodings))
-        self.encoded_training_data['knn_classifier'] = KNeighborsClassifier(n_neighbors=1)
+        self.encoded_training_data['knn_classifier'] = KNeighborsClassifier(n_neighbors=knn_k)
         self.encoded_training_data['knn_classifier'].fit(self.encoded_training_data['encodings'],
                                                          self.encoded_training_data['labels'])
         f = open(os.path.join(self.encodings_path, save_file_name), "wb")

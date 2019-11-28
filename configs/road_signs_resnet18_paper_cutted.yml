@@ -1,0 +1,20 @@
+input_shape :  [48, 48, 3]
+encodings_len: 256
+margin: 0.4
+mode : 'triplet'
+distance_type : 'l1'
+backbone : 'resnet18'
+backbone_weights : 'imagenet'
+optimizer : 'radam'
+learning_rate : 0.0001
+project_name : 'road_signs/'
+freeze_backbone : False
+embeddings_normalization: True
+
+#paths
+dataset_path : '/home/rauf/datasets/road_signs/road_signs_full_cutted/'
+tensorboard_log_path : 'tf_log/'
+weights_save_path : 'weights/'
+plots_path : 'plots/'
+encodings_path : 'encodings/'
+model_save_name : 'best_model_resnet18_paper.h5'
