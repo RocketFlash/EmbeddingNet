@@ -7,77 +7,64 @@ from keras.models import Model, load_model
 from keras import optimizers
 from keras.layers import Dense, Input, Lambda, concatenate
 import pickle
-from .utils import parse_net_params, load_encodings
+from .utils import load_encodings
 from .backbones import get_backbone
+from .pretrain_backbone_softmax import pretrain_backbone_softmax
 from . import losses_and_accuracies as lac
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
 
-# TODO 
+# TODO
 # [] - implement magnet loss
 # [] - finalize settings with l1 and l2 losses
+
 
 class EmbeddingNet:
     """
     SiameseNet for image classification
     distance_type = 'l1' -> l1_loss
     distance_type = 'l2' -> l2_loss
-    
+
     mode = 'siamese' -> Siamese network
     mode = 'triplet' -> Triplen network
     """
 
-    def __init__(self,  cfg_file=None):
-        if cfg_file:
-            params = parse_net_params(cfg_file)
-            self.input_shape = params['input_shape']
-            self.encodings_len = params['encodings_len']
-            self.backbone = params['backbone']
-            self.backbone_weights = params['backbone_weights']
-            self.distance_type = params['distance_type']
-            self.mode = params['mode']
-            self.project_name = params['project_name']
-            self.optimizer = params['optimizer']
-            self.freeze_backbone = params['freeze_backbone']
-            self.data_loader = params['loader']
-            self.embeddings_normalization = params['embeddings_normalization']
-            self.margin = params['margin']
+    def __init__(self,  cfg_params):
+        self.input_shape = cfg_params['input_shape']
+        self.encodings_len = cfg_params['encodings_len']
+        self.backbone = cfg_params['backbone']
+        self.backbone_weights = cfg_params['backbone_weights']
+        self.distance_type = cfg_params['distance_type']
+        self.mode = cfg_params['mode']
+        self.optimizer = cfg_params['optimizer']
+        self.freeze_backbone = cfg_params['freeze_backbone']
+        self.data_loader = cfg_params['loader']
+        self.embeddings_normalization = cfg_params['embeddings_normalization']
+        self.margin = cfg_params['margin']
 
-            self.model = []
-            self.base_model = []
-            self.l_model = []
-            self.backbone_model = []
+        self.model = []
+        self.base_model = []
+        self.backbone_model = []
 
-            self.encodings_path = params['encodings_path']
-            self.plots_path = params['plots_path']
-            self.tensorboard_log_path = params['tensorboard_log_path']
-            self.weights_save_path = params['weights_save_path']
-            self.model_save_name = params['model_save_name']
+        self.tensorboard_log_path = cfg_params['tensorboard_log_path']
 
-            os.makedirs(self.encodings_path, exist_ok=True)
-            os.makedirs(self.plots_path, exist_ok=True)
-            os.makedirs(self.tensorboard_log_path, exist_ok=True)
-            os.makedirs(self.weights_save_path, exist_ok=True)
+        if self.mode == 'siamese':
+            self._create_model_siamese()
+        elif self.mode == 'triplet':
+            self._create_model_triplet()
 
-            if self.mode == 'siamese':
-                self._create_model_siamese()
-            elif self.mode == 'triplet':
-                self._create_model_triplet()
-            
-            self.encoded_training_data = {}
-        else:
-            self.margin = 0.5
+        self.encoded_training_data = {}
 
+        if cfg_params['softmax_pretraining']:
+            pretrain_backbone_softmax(self.backbone_model, cfg_params)
 
-    def _create_base_model(self):      
+    def _create_base_model(self):
         self.base_model, self.backbone_model = get_backbone(input_shape=self.input_shape,
-                                       encodings_len=self.encodings_len,
-                                       backbone_type=self.backbone,
-                                       embeddings_normalization=self.embeddings_normalization,
-                                       backbone_weights=self.backbone_weights,
-                                       freeze_backbone=self.freeze_backbone)
-        
-
+                                                            encodings_len=self.encodings_len,
+                                                            backbone_type=self.backbone,
+                                                            embeddings_normalization=self.embeddings_normalization,
+                                                            backbone_weights=self.backbone_weights,
+                                                            freeze_backbone=self.freeze_backbone)
 
     def _create_model_siamese(self):
 
@@ -130,19 +117,19 @@ class EmbeddingNet:
         image_encoding_p = self.base_model(input_image_p)
         image_encoding_n = self.base_model(input_image_n)
 
-        merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n], 
+        merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n],
                                     axis=-1, name='merged_layer')
-        self.model  = Model(inputs=[input_image_a,input_image_p, input_image_n], 
-                            outputs=merged_vector)
-        
+        self.model = Model(inputs=[input_image_a, input_image_p, input_image_n],
+                           outputs=merged_vector)
+
         print('Base model summary')
         self.base_model.summary()
 
         print('Whole model summary')
         self.model.summary()
 
-        self.model.compile(loss=lac.triplet_loss(self.margin), optimizer=self.optimizer)
-
+        self.model.compile(loss=lac.triplet_loss(
+            self.margin), optimizer=self.optimizer)
 
     def train_on_batch(self, batch_size=8, s="train"):
         generator = self.data_loader.generate(batch_size, s=s)
@@ -158,35 +145,41 @@ class EmbeddingNet:
             pairs, targets)
         return val_loss, val_accuracy
 
-    def train_generator(self, steps_per_epoch, epochs, callbacks = [], val_steps=100, with_val=True, batch_size=8, verbose=1):
+    def train_generator(self, steps_per_epoch, epochs, callbacks=[], val_steps=100, with_val=True, batch_size=8, verbose=1):
 
-        train_generator = self.data_loader.generate(batch_size, mode=self.mode, s="train")
-        val_generator = self.data_loader.generate(batch_size, mode=self.mode, s="val")
-        
+        train_generator = self.data_loader.generate(
+            batch_size, mode=self.mode, s="train")
+        val_generator = self.data_loader.generate(
+            batch_size, mode=self.mode, s="val")
+
         history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                                 verbose=verbose, validation_data = val_generator, validation_steps = val_steps, callbacks=callbacks)
-        if self.plots_path:
-            self.plot_grapths(history)
+                                           verbose=verbose, validation_data=val_generator, validation_steps=val_steps, callbacks=callbacks)
+
         return history
-    
-    def train_generator_mining(self, 
-                               steps_per_epoch, 
-                               epochs, callbacks = [], 
-                               val_steps=100, 
-                               with_val=True, 
-                               n_classes=4, 
+
+    def train_generator_mining(self,
+                               steps_per_epoch,
+                               epochs, callbacks=[],
+                               val_steps=100,
+                               with_val=True,
+                               n_classes=4,
                                n_samples=4,
                                val_batch=8,
-                               negative_selection_mode='semihard', 
+                               negative_selection_mode='semihard',
                                verbose=1):
 
-        train_generator = self.data_loader.generate_mining(self.base_model, n_classes, n_samples, margin=self.margin, negative_selection_mode=negative_selection_mode, s="train")
-        val_generator = self.data_loader.generate(val_batch, mode=self.mode, s="val")
+        train_generator = self.data_loader.generate_mining(
+            self.base_model, n_classes, n_samples, margin=self.margin, negative_selection_mode=negative_selection_mode, s="train")
+        val_generator = self.data_loader.generate(
+            val_batch, mode=self.mode, s="val")
 
-        history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                                 verbose=verbose, validation_data = val_generator, validation_steps = val_steps, callbacks=callbacks)
-        if self.plots_path:
-            self.plot_grapths(history)
+        history = self.model.fit_generator(train_generator,
+                                           steps_per_epoch=steps_per_epoch,
+                                           epochs=epochs,
+                                           verbose=verbose,
+                                           validation_data=val_generator,
+                                           validation_steps=val_steps,
+                                           callbacks=callbacks)
         return history
 
     def validate(self, number_of_comparisons=100, batch_size=4, s="val"):
@@ -212,20 +205,22 @@ class EmbeddingNet:
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         return encoding
 
-    def generate_encodings(self, save_file_name='encodings.pkl', max_num_samples_of_each_classes=10, knn_k = 1, shuffle = True):
+    def generate_encodings(self, save_file_name='encodings.pkl', max_num_samples_of_each_class=10, knn_k=1, shuffle=True):
         data_paths, data_labels, data_encodings = [], [], []
         classes_counter = {}
 
         if shuffle:
-            c = list(zip(self.data_loader.images_paths['train'], self.data_loader.images_labels['train']))
+            c = list(zip(
+                self.data_loader.images_paths['train'], self.data_loader.images_labels['train']))
             random.shuffle(c)
-            self.data_loader.images_paths['train'], self.data_loader.images_labels['train'] = zip(*c)
+            self.data_loader.images_paths['train'], self.data_loader.images_labels['train'] = zip(
+                *c)
 
         for img_path, img_label in zip(self.data_loader.images_paths['train'],
                                        self.data_loader.images_labels['train']):
             if img_label not in classes_counter:
                 classes_counter[img_label] = 0
-            if classes_counter[img_label] < max_num_samples_of_each_classes:
+            if classes_counter[img_label] < max_num_samples_of_each_class:
                 encod = self._generate_encoding(img_path)
                 if encod is not None:
                     data_paths.append(img_path)
@@ -236,25 +231,26 @@ class EmbeddingNet:
         self.encoded_training_data['labels'] = data_labels
         self.encoded_training_data['encodings'] = np.squeeze(
             np.array(data_encodings))
-        self.encoded_training_data['knn_classifier'] = KNeighborsClassifier(n_neighbors=knn_k)
+        self.encoded_training_data['knn_classifier'] = KNeighborsClassifier(
+            n_neighbors=knn_k)
         self.encoded_training_data['knn_classifier'].fit(self.encoded_training_data['encodings'],
                                                          self.encoded_training_data['labels'])
-        f = open(os.path.join(self.encodings_path, save_file_name), "wb")
+        f = open(save_file_name, "wb")
         pickle.dump(self.encoded_training_data, f)
         f.close()
 
     def load_encodings(self, path_to_encodings):
         self.encoded_training_data = load_encodings(path_to_encodings)
 
-    def load_model(self,file_path):
+    def load_model(self, file_path):
         from keras_radam import RAdam
-        self.model = load_model(file_path, 
-                                 custom_objects={'contrastive_loss': lac.contrastive_loss, 
-                                                 'accuracy': lac.accuracy,
-                                                 'loss_function': lac.triplet_loss(self.margin),
-                                                 'RAdam': RAdam})
+        self.model = load_model(file_path,
+                                custom_objects={'contrastive_loss': lac.contrastive_loss,
+                                                'accuracy': lac.accuracy,
+                                                'loss_function': lac.triplet_loss(self.margin),
+                                                'RAdam': RAdam})
         self.input_shape = list(self.model.inputs[0].shape[1:])
-        self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)], 
+        self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)],
                                 outputs=[self.model.layers[3].layers[-1].output])
         self.base_model._make_predict_function()
 
@@ -282,7 +278,8 @@ class EmbeddingNet:
             img = image
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
-        predicted_label = self.encoded_training_data['knn_classifier'].predict(encoding)
+        predicted_label = self.encoded_training_data['knn_classifier'].predict(
+            encoding)
         return predicted_label
 
     def calculate_prediction_accuracy(self):
@@ -292,18 +289,5 @@ class EmbeddingNet:
                                        self.data_loader.images_labels['val']):
             prediction = self.predict_knn(img_path)[0]
             if prediction == img_label:
-                correct+=1
+                correct += 1
         return correct/total_n_of_images
-
-    def plot_grapths(self, history):
-        for k, v in history.history.items():
-            t = list(range(len(v)))
-            fig, ax = plt.subplots()
-            ax.plot(t, v)
-
-            ax.set(xlabel='epoch', ylabel='{}'.format(k),
-                title='{}'.format(k))
-            ax.grid()
-
-            fig.savefig("{}{}.png".format(self.plots_path, k))
-

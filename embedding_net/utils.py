@@ -73,16 +73,25 @@ def plot_tsne_interactive(encodings_path):
     fig.show()
 
 
+def plot_grapths(history, save_path):
+    for k, v in history.history.items():
+        t = list(range(len(v)))
+        fig, ax = plt.subplots()
+        ax.plot(t, v)
+
+        ax.set(xlabel='epoch', ylabel='{}'.format(k),
+               title='{}'.format(k))
+        ax.grid()
+
+        fig.savefig("{}{}.png".format(save_path, k))
+
+
 def parse_net_params(filename='configs/road_signs.yml'):
     params = {}
     with open(filename, 'r') as ymlfile:
         cfg = yaml.safe_load(ymlfile)
 
-    if cfg['learning_rate']:
-        learning_rate = cfg['learning_rate']
-    else:
-        learning_rate = 0.0004
-
+    learning_rate = cfg['learning_rate']
     if cfg['optimizer'] == 'adam':
         optimizer = optimizers.Adam(lr=learning_rate)
     elif cfg['optimizer'] == 'rms_prop':
@@ -100,19 +109,10 @@ def parse_net_params(filename='configs/road_signs.yml'):
 
     params = {k: v for k, v in cfg.items() if k not in ['optimizer']}
 
-    params['encodings_path'] = os.path.join(cfg['encodings_path'],
-                                            cfg['project_name'])
-    params['plots_path'] = os.path.join(cfg['plots_path'],
-                                        cfg['project_name'])
-    params['tensorboard_log_path'] = os.path.join(cfg['tensorboard_log_path'],
-                                                  cfg['project_name'])
-    params['weights_save_path'] = os.path.join(cfg['weights_save_path'],
-                                               cfg['project_name'])
-    params['model_save_name'] = cfg['model_save_name']
     if 'dataset_path' in cfg:
         params['loader'] = EmbeddingNetImageLoader(cfg['dataset_path'],
-                                              input_shape=cfg['input_shape'],
-                                              augmentations=augmentations)
+                                                   input_shape=cfg['input_shape'],
+                                                   augmentations=augmentations)
 
     params['optimizer'] = optimizer
     return params

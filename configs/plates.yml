@@ -1,21 +1,45 @@
 input_shape :  [128, 128, 3]
-encodings_len: 256
-margin: 0.5
+encodings_len: 512
+margin: 0.4
 mode : 'triplet'
-distance_type : 'l1'
-backbone : 'resnext50'
+distance_type : 'l2'
+backbone : 'resnet18'
 backbone_weights : 'imagenet'
-optimizer : 'radam'
-learning_rate : 0.0001
-project_name : 'plates/'
 freeze_backbone : True
-augmentation_type : 'default'
+augmentation_type : None
 embeddings_normalization: True
 
-#paths
+# optimizer parameters
+optimizer : 'radam'
+learning_rate : 0.0001
+decay_factor : 0.99
+step_size : 10
+
+# embeddings learning training parameters
+n_epochs : 1000
+n_steps_per_epoch : 10
+val_batch_size : 8
+val_steps : 10
+negatives_selection_mode : 'semihard'
+mining_n_classes: 2
+mining_n_samples: 3
+
+# softmax pretraining parameters
+softmax_pretraining : True
+softmax_batch_size : 8
+softmax_val_steps : 2
+softmax_steps_per_epoch : 2
+softmax_epochs : 1000
+
+# paths
+work_dir : 'work_dirs/plates/'
 dataset_path : '/home/rauf/plates_competition/dataset/to_train/'
 tensorboard_log_path : 'tf_log/'
-weights_save_path : 'weights/'
-plots_path : 'plots/'
-encodings_path : 'encodings/'
-model_save_name : 'best_model_simple2_plates.h5'
+plot_history : True
+model_save_name : 'best_model_resnet18_plates.h5'
+encodings_save_name: 'encodings_resnet18_plates.pkl'
+
+# encodings parameters
+save_encodings : True
+max_num_samples_of_each_class : 30
+knn_k : 1

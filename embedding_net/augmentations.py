@@ -1,12 +1,13 @@
 import albumentations as A
 
-def get_aug(name='default',input_shape=[48,48,3]):
+
+def get_aug(name='default', input_shape=[48, 48, 3]):
     if name == 'default':
         augmentations = A.Compose([
             A.RandomBrightnessContrast(p=0.4),
             A.RandomGamma(p=0.4),
             A.HueSaturationValue(hue_shift_limit=20,
-                                sat_shift_limit=30, val_shift_limit=30, p=0.4),
+                                 sat_shift_limit=30, val_shift_limit=30, p=0.4),
             A.CLAHE(p=0.4),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
@@ -16,5 +17,5 @@ def get_aug(name='default',input_shape=[48,48,3]):
         ], p=1)
     else:
         augmentations = None
-    
-    return albumentations
+
+    return augmentations
