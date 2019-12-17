@@ -30,11 +30,12 @@ def pretrain_backbone_softmax(input_model, cfg_params):
     train_generator = image_loader.generate(batch_size, s="train")
     val_generator = image_loader.generate(batch_size, s="val")
 
+    tensorboard_save_path = os.path.join(
+        cfg_params['work_dir'], 'tf_log/pretraining_model/')
     callbacks = [
         ReduceLROnPlateau(monitor='val_loss', factor=0.1,
                           patience=4, verbose=1),
-        EarlyStopping(patience=50, verbose=1),
-        TensorBoard(log_dir='tf_log/')
+        TensorBoard(log_dir=tensorboard_save_path)
     ]
 
     history = model.fit_generator(train_generator,

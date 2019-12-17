@@ -33,12 +33,12 @@ softmax_steps_per_epoch : 500
 softmax_epochs : 20
 
 #paths
-work_dir : 'work_dirs/plates/'
+work_dir : 'work_dirs/road_signs_resnext34/'
 dataset_path : '/home/rauf/datasets/road_signs/road_signs_separated/'
 plot_history : True
 encodings_path : 'encodings/'
-model_save_name : 'best_model_resnet18.h5'
-encodings_save_name: 'encodings_resnet18.pkl'
+model_save_name : 'best_model_resnet34.h5'
+encodings_save_name: 'encodings_resnet34.pkl'
 
 # encodings parameters
 save_encodings : True

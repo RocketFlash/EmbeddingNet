@@ -70,7 +70,7 @@ def get_backbone(input_shape,
         base_model = Model(
             inputs=[input_image], outputs=[encoded_output])
     else:
-        from classification_models import Classifiers
+        from classification_models.keras import Classifiers
         classifier, preprocess_input = Classifiers.get(backbone_type)
         backbone_model = classifier(input_shape=input_shape,
                                     weights=backbone_weights,
@@ -82,7 +82,7 @@ def get_backbone(input_shape,
 
         after_backbone = backbone_model.output
         x = Flatten()(after_backbone)
-        
+
         encoded_output = Dense(encodings_len, activation="relu")(x)
         if embeddings_normalization:
             encoded_output = Lambda(lambda x: K.l2_normalize(
