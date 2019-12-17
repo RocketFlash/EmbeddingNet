@@ -1,6 +1,6 @@
 image-classifiers
 keras==2.2.5
-tensorflow-gpu==1.14.0
+tensorflow-gpu==1.15.0
 matplotlib
 albumentations
 scikit-learn
