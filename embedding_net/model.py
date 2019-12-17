@@ -46,8 +46,6 @@ class EmbeddingNet:
         self.base_model = []
         self.backbone_model = []
 
-        self.tensorboard_log_path = cfg_params['tensorboard_log_path']
-
         if self.mode == 'siamese':
             self._create_model_siamese()
         elif self.mode == 'triplet':

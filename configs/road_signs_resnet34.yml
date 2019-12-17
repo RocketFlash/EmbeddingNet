@@ -3,7 +3,7 @@ encodings_len: 256
 margin: 0.5
 mode : 'triplet'
 distance_type : 'l1'
-backbone : 'resnet18'
+backbone : 'resnet34'
 backbone_weights : 'imagenet'
 project_name : 'road_signs/'
 freeze_backbone : False
@@ -18,7 +18,7 @@ step_size : 1
 
 # embeddings learning training parameters
 n_epochs : 1000
-n_steps_per_epoch : 200
+n_steps_per_epoch : 50
 val_batch_size : 8
 val_steps : 200
 negatives_selection_mode : 'semihard'
@@ -27,7 +27,7 @@ mining_n_samples: 3
 
 # softmax pretraining parameters
 softmax_pretraining : True
-softmax_batch_size : 8
+softmax_batch_size : 16
 softmax_val_steps : 200
 softmax_steps_per_epoch : 500
 softmax_epochs : 20

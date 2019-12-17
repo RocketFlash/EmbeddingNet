@@ -33,6 +33,9 @@ def main():
 
     model = EmbeddingNet(cfg_params)
 
+    if args.resume_from is not None:
+        model.load_model(args.resume_from)
+
     weights_save_file = os.path.join(
         weights_save_path, cfg_params['model_save_name'])
 

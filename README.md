@@ -61,10 +61,11 @@ Dataset
 
 For training, it is necessary to create a configuration file in which all network parameters and training parameters will be indicated. Examples of configuration files can be found in the **configs** folder. 
 
-After the configuration file is created, you can modify **train.py** file, and then start training:
+After the configuration file is created, you can run **train.py** file, and start training:
 
 ```bash
-$ python3 train.py
+$ python3 train.py [config (path to configuration_file)]
+                   [--resume_from (the checkpoint file to resume from)]
 ```
 
 # Test
@@ -72,7 +73,8 @@ $ python3 train.py
 The trained model can be tested using the following command:
 
 ```bash
-$ python3 test.py [--weights (path to trained model weights file)] 
+$ python3 test.py [config (path to configuration_file)]
+                  [--weights (path to trained model weights file)] 
                   [--encodings (path to trained model encodings file)]
                   [--image (path to image file)]
 ```

@@ -1,9 +1,9 @@
 input_shape :  [48, 48, 3]
 encodings_len: 256
-margin: 0.5
+margin: 0.4
 mode : 'triplet'
 distance_type : 'l1'
-backbone : 'resnet18'
+backbone : 'resnext50'
 backbone_weights : 'imagenet'
 project_name : 'road_signs/'
 freeze_backbone : False
@@ -12,9 +12,9 @@ embeddings_normalization: True
 
 # optimizer parameters
 optimizer : 'radam'
-learning_rate : 0.0001
-decay_factor : 0.99
-step_size : 1
+learning_rate : 0.001
+decay_factor : 0.95
+step_size : 2
 
 # embeddings learning training parameters
 n_epochs : 1000
@@ -22,7 +22,7 @@ n_steps_per_epoch : 200
 val_batch_size : 8
 val_steps : 200
 negatives_selection_mode : 'semihard'
-mining_n_classes: 5
+mining_n_classes: 5 # training batch_size = mining_n_classes * mining_n_samples
 mining_n_samples: 3
 
 # softmax pretraining parameters

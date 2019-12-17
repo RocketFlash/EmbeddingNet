@@ -34,7 +34,6 @@ softmax_epochs : 1000
 # paths
 work_dir : 'work_dirs/plates/'
 dataset_path : '/home/rauf/plates_competition/dataset/to_train/'
-tensorboard_log_path : 'tf_log/'
 plot_history : True
 model_save_name : 'best_model_resnet18_plates.h5'
 encodings_save_name: 'encodings_resnet18_plates.pkl'
