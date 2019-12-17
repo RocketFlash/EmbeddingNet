@@ -1,6 +1,6 @@
 image-classifiers
-keras
-tensorflow-gpu
+keras==2.2.5
+tensorflow-gpu==1.14.0
 matplotlib
 albumentations
 scikit-learn

@@ -40,5 +40,6 @@ encodings_save_name: 'encodings_resnet18_plates.pkl'
 
 # encodings parameters
 save_encodings : True
+centers_only: False
 max_num_samples_of_each_class : 30
 knn_k : 1

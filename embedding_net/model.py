@@ -196,6 +196,7 @@ class EmbeddingNet:
             val_accuracies_it) / len(val_accuracies_it)
         return val_loss_epoch, val_accuracy_epoch
 
+
     def _generate_encoding(self, img_path):
         img = self.data_loader.get_image(img_path)
         if img is None:
@@ -203,9 +204,12 @@ class EmbeddingNet:
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         return encoding
 
-    def generate_encodings(self, save_file_name='encodings.pkl', max_num_samples_of_each_class=10, knn_k=1, shuffle=True):
+
+    def generate_encodings(self, save_file_name='encodings.pkl', only_centers=False, max_num_samples_of_each_class=10, knn_k=1, shuffle=True):
         data_paths, data_labels, data_encodings = [], [], []
         classes_counter = {}
+        classes_encodings = {}
+        k_val = 1 if only_centers else knn_k
 
         if shuffle:
             c = list(zip(
@@ -216,21 +220,35 @@ class EmbeddingNet:
 
         for img_path, img_label in zip(self.data_loader.images_paths['train'],
                                        self.data_loader.images_labels['train']):
-            if img_label not in classes_counter:
-                classes_counter[img_label] = 0
+            if only_centers:
+                if img_label not in classes_encodings:
+                    classes_encodings[img_label] = []
+            else:
+                if img_label not in classes_counter:
+                    classes_counter[img_label] = 0
             if classes_counter[img_label] < max_num_samples_of_each_class:
                 encod = self._generate_encoding(img_path)
+                
                 if encod is not None:
-                    data_paths.append(img_path)
-                    data_labels.append(img_label)
-                    data_encodings.append(encod)
-                    classes_counter[img_label] += 1
+                    if only_centers:
+                        classes_encodings[img_label].append(encod)
+                    else:
+                        data_paths.append(img_path)
+                        data_labels.append(img_label)
+                        data_encodings.append(encod)
+                        classes_counter[img_label] += 1
+        if only_centers:
+            for class_i, encodings_i in classes_encodings.items():
+                encodings_i_np = np.array(encodings_i)
+                class_encoding = np.mean(encodings_i_np, axis = 0)
+                data_encodings.append(class_encoding)
+                data_labels.append(class_i)
         self.encoded_training_data['paths'] = data_paths
         self.encoded_training_data['labels'] = data_labels
         self.encoded_training_data['encodings'] = np.squeeze(
             np.array(data_encodings))
         self.encoded_training_data['knn_classifier'] = KNeighborsClassifier(
-            n_neighbors=knn_k)
+            n_neighbors=k_val)
         self.encoded_training_data['knn_classifier'].fit(self.encoded_training_data['encodings'],
                                                          self.encoded_training_data['labels'])
         f = open(save_file_name, "wb")
