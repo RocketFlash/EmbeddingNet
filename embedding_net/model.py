@@ -251,7 +251,7 @@ class EmbeddingNet:
             n_neighbors=k_val)
         self.encoded_training_data['knn_classifier'].fit(self.encoded_training_data['encodings'],
                                                          self.encoded_training_data['labels'])
-        with open(save_file_name, "wb") as f
+        with open(save_file_name, "wb") as f:
             pickle.dump(self.encoded_training_data, f)
 
     def load_encodings(self, path_to_encodings):
