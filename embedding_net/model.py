@@ -3,16 +3,18 @@ import numpy as np
 import keras.backend as K
 import cv2
 import random
+import keras
 from keras.models import Model, load_model
 from keras import optimizers
 from keras.layers import Dense, Input, Lambda, concatenate
 import pickle
 from .utils import load_encodings
 from .backbones import get_backbone
-from .pretrain_backbone_softmax import pretrain_backbone_softmax
 from . import losses_and_accuracies as lac
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
+from keras.callbacks import TensorBoard, LearningRateScheduler
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
 # TODO
 # [] - implement magnet loss
@@ -29,7 +31,7 @@ class EmbeddingNet:
     mode = 'triplet' -> Triplen network
     """
 
-    def __init__(self,  cfg_params):
+    def __init__(self,  cfg_params, training = True):
         self.input_shape = cfg_params['input_shape']
         self.encodings_len = cfg_params['encodings_len']
         self.backbone = cfg_params['backbone']
@@ -41,6 +43,7 @@ class EmbeddingNet:
         self.data_loader = cfg_params['loader']
         self.embeddings_normalization = cfg_params['embeddings_normalization']
         self.margin = cfg_params['margin']
+        self.cfg_params = cfg_params
 
         self.model = []
         self.base_model = []
@@ -50,11 +53,73 @@ class EmbeddingNet:
             self._create_model_siamese()
         elif self.mode == 'triplet':
             self._create_model_triplet()
+        else:
+            self._create_base_model()
 
         self.encoded_training_data = {}
 
-        if cfg_params['softmax_pretraining']:
-            pretrain_backbone_softmax(self.backbone_model, cfg_params)
+        if cfg_params['softmax_pretraining'] and training:
+            self.pretrain_backbone_softmax()
+
+    def pretrain_backbone_softmax(self):
+        input_shape = self.cfg_params['input_shape']
+        dataset_path = self.cfg_params['dataset_path']
+        n_classes = self.data_loader.n_classes['train']
+        if 'softmax_is_binary' in self.cfg_params:
+            is_binary = self.cfg_params['softmax_is_binary']
+        else: 
+            is_binary = False
+
+        x = keras.layers.GlobalAveragePooling2D()(self.backbone_model.output)
+        if is_binary:
+            output = keras.layers.Dense(1, activation='softmax')(x)
+        else:
+            output = keras.layers.Dense(n_classes, activation='softmax')(x)
+        model = keras.models.Model(inputs=[self.backbone_model.input], outputs=[output])
+
+        # train
+        mloss = 'binary_crossentropy' if is_binary else 'categorical_crossentropy'
+        model.compile(optimizer='Adam',
+                    loss=mloss, metrics=['accuracy'])
+
+        batch_size_train = self.cfg_params['softmax_batch_size_train']
+        batch_size_val = self.cfg_params['softmax_batch_size_val']
+        val_steps = self.cfg_params['softmax_val_steps']
+        steps_per_epoch = self.cfg_params['softmax_steps_per_epoch']
+        epochs = self.cfg_params['softmax_epochs']
+
+        train_generator = self.data_loader.generate(batch_size_train,is_binary=is_binary, mode='simple', s="train")
+        val_generator = self.data_loader.generate(batch_size_val,is_binary=is_binary, mode='simple', s="val")
+
+        tensorboard_save_path = os.path.join(
+            self.cfg_params['work_dir'], 'tf_log/pretraining_model/')
+        weights_save_file = os.path.join(
+            self.cfg_params['work_dir'], 
+            'weights/pretraining_model/',
+            self.cfg_params['model_save_name'])
+
+        initial_lr = self.cfg_params['learning_rate']
+        decay_factor = self.cfg_params['decay_factor']
+        step_size = self.cfg_params['step_size']
+
+        callbacks = [
+            LearningRateScheduler(lambda x: initial_lr *
+                                decay_factor ** np.floor(x/step_size)),
+            ReduceLROnPlateau(monitor='val_loss', factor=0.1,
+                            patience=20, verbose=1),
+            EarlyStopping(patience=10, verbose=1, restore_best_weights=True),
+            TensorBoard(log_dir=tensorboard_save_path),
+            ModelCheckpoint(filepath=weights_save_file,
+                            verbose=1, monitor='val_loss', save_best_only=True)
+        ]
+
+        history = model.fit_generator(train_generator,
+                                    steps_per_epoch=steps_per_epoch,
+                                    epochs=epochs,
+                                    verbose=1,
+                                    validation_data=val_generator,
+                                    validation_steps=val_steps,
+                                    callbacks=callbacks)
 
     def _create_base_model(self):
         self.base_model, self.backbone_model = get_backbone(input_shape=self.input_shape,
@@ -251,7 +316,7 @@ class EmbeddingNet:
             n_neighbors=k_val)
         self.encoded_training_data['knn_classifier'].fit(self.encoded_training_data['encodings'],
                                                          self.encoded_training_data['labels'])
-        with open(save_file_name, "wb") as f
+        with open(save_file_name, "wb") as f:
             pickle.dump(self.encoded_training_data, f)
 
     def load_encodings(self, path_to_encodings):
@@ -286,23 +351,45 @@ class EmbeddingNet:
         predicted_label = self.encoded_training_data['labels'][max_element]
         return predicted_label
 
-    def predict_knn(self, image):
+    def predict_knn(self, image, with_top5=False):
+        import albumentations as A
+        augmentations = A.Compose([
+            A.CenterCrop(p=1, height=2*self.input_shape[1]//3, width=2*self.input_shape[0]//3),
+            A.Resize(p=1, height=self.input_shape[1], width=self.input_shape[0])
+        ], p=1)
+
+
         if type(image) is str:
             img = cv2.imread(image)
         else:
             img = image
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
+        img = augmentations(image=img)['image']
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         predicted_label = self.encoded_training_data['knn_classifier'].predict(
             encoding)
-        return predicted_label
+        if with_top5:    
+            prediction_top5_idx = self.encoded_training_data['knn_classifier'].kneighbors(encoding, n_neighbors=5)
+            prediction_top5 = [self.encoded_training_data['labels'][prediction_top5_idx[1][0][i]] for i in range(5)]
+            return predicted_label, prediction_top5
+        else:
+            return predicted_label
 
     def calculate_prediction_accuracy(self):
-        correct = 0
+        correct_top1 = 0
+        correct_top5 = 0
+
+        accuracies = {'top1':0,
+                      'top5':0 }
         total_n_of_images = len(self.data_loader.images_paths['val'])
         for img_path, img_label in zip(self.data_loader.images_paths['val'],
                                        self.data_loader.images_labels['val']):
-            prediction = self.predict_knn(img_path)[0]
-            if prediction == img_label:
-                correct += 1
-        return correct/total_n_of_images
+            prediction, prediction_top5 = self.predict_knn(img_path, with_top5=True)
+            if prediction[0] == img_label:
+                correct_top1 += 1
+            if img_label in prediction_top5:
+                correct_top5 += 1
+        accuracies['top1'] = correct_top1/total_n_of_images
+        accuracies['top5'] = correct_top5/total_n_of_images
+
+        return accuracies

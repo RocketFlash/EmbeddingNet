@@ -1,13 +1,13 @@
-input_shape :  [128, 128, 3]
-encodings_len: 128
+input_shape :  [48, 48, 3]
+encodings_len: 256
 margin: 0.5
-mode : 'triplet'
-distance_type : 'l2'
-backbone : 'simple2'
+mode : 'softmax_only'
+distance_type : 'l1'
+backbone : 'resnet18'
 backbone_weights : 'imagenet'
 freeze_backbone : False
-augmentation_type : 'plates'
-min_n_obj_per_class : 0 
+augmentation_type : 'default'
+min_n_obj_per_class : 30 
 select_max_n_obj_per_class : 30
 max_n_obj_per_class : 10000
 embeddings_normalization: True
@@ -22,25 +22,24 @@ step_size : 1
 n_epochs : 1000
 n_steps_per_epoch : 200
 val_batch_size : 8
-val_steps : 10
+val_steps : 500
 negatives_selection_mode : 'semihard'
-mining_n_classes: 2
+mining_n_classes: 5
 mining_n_samples: 3
 
 # softmax pretraining parameters
 softmax_pretraining : True
 softmax_batch_size : 8
-softmax_val_steps : 1
-softmax_steps_per_epoch : 500
-softmax_epochs : 5
+softmax_val_steps : 200
+softmax_steps_per_epoch : 800
+softmax_epochs : 200
 
 #paths
-# paths
-work_dir : 'work_dirs/plates/'
-dataset_path : '/home/rauf/datasets/plates/plates_splitted/'
+work_dir : 'work_dirs/paper_resnet18_softmax_only/'
+dataset_path : '/home/rauf/datasets/road_signs/road_signs_separated/'
 plot_history : True
-model_save_name : 'best_model_plates_simple2.h5'
-encodings_save_name: 'encodings_plates_simple2.pkl'
+model_save_name : 'best_model_paper_resnet18_softmax_only.h5'
+encodings_save_name: 'encodings_paper_resnet18_softmax_only.pkl'
 
 # encodings parameters
 save_encodings : True

@@ -24,17 +24,22 @@ def main():
     cfg_params = parse_net_params(args.config)
     os.makedirs(cfg_params['work_dir'], exist_ok=True)
     weights_save_path = os.path.join(cfg_params['work_dir'], 'weights/')
+    weights_pretrained_save_path = os.path.join(weights_save_path, 'pretraining_model/')
     encodings_save_path = os.path.join(cfg_params['work_dir'], 'encodings/')
     plots_save_path = os.path.join(cfg_params['work_dir'], 'plots/')
     tensorboard_save_path = os.path.join(cfg_params['work_dir'], 'tf_log/')
 
+
     os.makedirs(weights_save_path, exist_ok=True)
+    os.makedirs(weights_pretrained_save_path, exist_ok=True)
     os.makedirs(encodings_save_path, exist_ok=True)
 
     model = EmbeddingNet(cfg_params)
-
+    if cfg_params['mode'] not in ['triplet', 'siamese']:
+        return
     if args.resume_from is not None:
         model.load_model(args.resume_from)
+
 
     weights_save_file = os.path.join(
         weights_save_path, cfg_params['model_save_name'])
@@ -48,7 +53,7 @@ def main():
                               decay_factor ** np.floor(x/step_size)),
         ReduceLROnPlateau(monitor='val_loss', factor=0.1,
                           patience=4, verbose=1),
-        EarlyStopping(patience=5, verbose=1),
+        EarlyStopping(patience=10, verbose=1),
         TensorBoard(log_dir=tensorboard_save_path),
         ModelCheckpoint(filepath=weights_save_file,
                         verbose=1, monitor='val_loss', save_best_only=True)
@@ -75,8 +80,9 @@ def main():
                                  knn_k=cfg_params['knn_k'],
                                  shuffle=True)
 
-        model_accuracy = model.calculate_prediction_accuracy()
-        print('Model accuracy on validation set: {}'.format(model_accuracy))
+        model_accuracies = model.calculate_prediction_accuracy()
+        print('Model top1 accuracy on validation set: {}'.format(model_accuracies['top1']))
+        print('Model top5 accuracy on validation set: {}'.format(model_accuracies['top5']))
 
 
 if __name__ == '__main__':

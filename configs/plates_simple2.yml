@@ -1,8 +1,8 @@
 input_shape :  [128, 128, 3]
-encodings_len: 128
-margin: 0.5
+encodings_len: 64
+margin: 0.4
 mode : 'triplet'
-distance_type : 'l2'
+distance_type : 'l1'
 backbone : 'simple2'
 backbone_weights : 'imagenet'
 freeze_backbone : False
@@ -29,11 +29,11 @@ mining_n_samples: 3
 
 # softmax pretraining parameters
 softmax_pretraining : True
-softmax_batch_size : 8
+softmax_batch_size : 16
 softmax_val_steps : 1
-softmax_steps_per_epoch : 500
-softmax_epochs : 5
-
+softmax_steps_per_epoch : 100
+softmax_epochs : 20
+softmax_is_binary: True
 #paths
 # paths
 work_dir : 'work_dirs/plates/'

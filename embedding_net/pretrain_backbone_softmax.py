@@ -1,7 +1,8 @@
 import keras
+import os
 import numpy as np
-from classification_models import Classifiers
-from .data_loader import SimpleNetImageLoader
+from classification_models.keras import Classifiers
+from .data_loader import EmbeddingNetImageLoader
 from keras.callbacks import TensorBoard, LearningRateScheduler
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
@@ -10,8 +11,11 @@ def pretrain_backbone_softmax(input_model, cfg_params):
 
     input_shape = cfg_params['input_shape']
     dataset_path = cfg_params['dataset_path']
-    image_loader = SimpleNetImageLoader(
-        dataset_path, input_shape=input_shape, augmentations=None)
+    image_loader = EmbeddingNetImageLoader(cfg['dataset_path'],
+                                           input_shape=cfg['input_shape'],
+                                           min_n_obj_per_class=cfg['min_n_obj_per_class'], 
+                                           max_n_obj_per_class=cfg['max_n_obj_per_class'],
+                                           augmentations=None)
     n_classes = image_loader.n_classes['train']
 
     x = keras.layers.GlobalAveragePooling2D()(input_model.output)
@@ -27,8 +31,8 @@ def pretrain_backbone_softmax(input_model, cfg_params):
     steps_per_epoch = cfg_params['softmax_steps_per_epoch']
     epochs = cfg_params['softmax_epochs']
 
-    train_generator = image_loader.generate(batch_size, s="train")
-    val_generator = image_loader.generate(batch_size, s="val")
+    train_generator = image_loader.generate(batch_size, mode='simple', s="train")
+    val_generator = image_loader.generate(batch_size, mode='simple', s="val")
 
     tensorboard_save_path = os.path.join(
         cfg_params['work_dir'], 'tf_log/pretraining_model/')

@@ -112,6 +112,9 @@ def parse_net_params(filename='configs/road_signs.yml'):
     if 'dataset_path' in cfg:
         params['loader'] = EmbeddingNetImageLoader(cfg['dataset_path'],
                                                    input_shape=cfg['input_shape'],
+                                                   min_n_obj_per_class=cfg['min_n_obj_per_class'],
+                                                   select_max_n_obj_per_class = cfg['select_max_n_obj_per_class'], 
+                                                   max_n_obj_per_class=cfg['max_n_obj_per_class'],
                                                    augmentations=augmentations)
 
     params['optimizer'] = optimizer
