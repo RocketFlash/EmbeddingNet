@@ -381,22 +381,14 @@ class EmbeddingNet:
         return predicted_label
 
     def predict_knn(self, image, with_top5=False):
-        import albumentations as A
-        augmentations = A.Compose([
-            A.CenterCrop(p=1, height=2*self.input_shape[1]//3, width=2*self.input_shape[0]//3),
-            A.Resize(p=1, height=self.input_shape[1], width=self.input_shape[0])
-        ], p=1)
-
-
         if type(image) is str:
             img = cv2.imread(image)
         else:
             img = image
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
-        img = augmentations(image=img)['image']
+
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
-        predicted_label = self.encoded_training_data['knn_classifier'].predict(
-            encoding)
+        predicted_label = self.encoded_training_data['knn_classifier'].predict(encoding)
         if with_top5:    
             prediction_top5_idx = self.encoded_training_data['knn_classifier'].kneighbors(encoding, n_neighbors=5)
             prediction_top5 = [self.encoded_training_data['labels'][prediction_top5_idx[1][0][i]] for i in range(5)]
