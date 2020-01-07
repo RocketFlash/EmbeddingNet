@@ -48,15 +48,22 @@ def main():
     decay_factor = cfg_params['decay_factor']
     step_size = cfg_params['step_size']
 
+    if cfg_params['to_validate']:
+        callback_monitor = 'val_loss'
+    else:
+        callback_monitor = 'loss'
+
     callbacks = [
         LearningRateScheduler(lambda x: initial_lr *
                               decay_factor ** np.floor(x/step_size)),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.1,
+        ReduceLROnPlateau(monitor=callback_monitor, factor=0.1,
                           patience=4, verbose=1),
-        EarlyStopping(patience=10, verbose=1),
+        EarlyStopping(monitor=callback_monitor,
+                      patience=10, 
+                      verbose=1),
         TensorBoard(log_dir=tensorboard_save_path),
         ModelCheckpoint(filepath=weights_save_file,
-                        verbose=1, monitor='val_loss', save_best_only=True)
+                        verbose=1, monitor=callback_monitor, save_best_only=True)
     ]
 
     history = model.train_generator_mining(steps_per_epoch=cfg_params['n_steps_per_epoch'],
@@ -79,10 +86,10 @@ def main():
                                  max_num_samples_of_each_class=cfg_params['max_num_samples_of_each_class'],
                                  knn_k=cfg_params['knn_k'],
                                  shuffle=True)
-
-        model_accuracies = model.calculate_prediction_accuracy()
-        print('Model top1 accuracy on validation set: {}'.format(model_accuracies['top1']))
-        print('Model top5 accuracy on validation set: {}'.format(model_accuracies['top5']))
+        if cfg_params['to_validate']:
+            model_accuracies = model.calculate_prediction_accuracy()
+            print('Model top1 accuracy on validation set: {}'.format(model_accuracies['top1']))
+            print('Model top5 accuracy on validation set: {}'.format(model_accuracies['top5']))
 
 
 if __name__ == '__main__':

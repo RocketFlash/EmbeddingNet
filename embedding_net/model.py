@@ -89,7 +89,12 @@ class EmbeddingNet:
         epochs = self.cfg_params['softmax_epochs']
 
         train_generator = self.data_loader.generate(batch_size_train,is_binary=is_binary, mode='simple', s="train")
-        val_generator = self.data_loader.generate(batch_size_val,is_binary=is_binary, mode='simple', s="val")
+        if 'val' in self.data_loader.data_subsets and self.cfg_params['to_validate']:
+            val_generator = self.data_loader.generate(batch_size_val,is_binary=is_binary, mode='simple', s="val")
+            checkpoint_callback_monitor = 'val_loss'
+        else:
+            val_generator = None
+            checkpoint_callback_monitor = 'loss'
 
         tensorboard_save_path = os.path.join(
             self.cfg_params['work_dir'], 'tf_log/pretraining_model/')
@@ -105,12 +110,17 @@ class EmbeddingNet:
         callbacks = [
             LearningRateScheduler(lambda x: initial_lr *
                                 decay_factor ** np.floor(x/step_size)),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.1,
+            ReduceLROnPlateau(monitor=checkpoint_callback_monitor, factor=0.1,
                             patience=20, verbose=1),
-            EarlyStopping(patience=10, verbose=1, restore_best_weights=True),
+            EarlyStopping(monitor=checkpoint_callback_monitor,
+                          patience=10, 
+                          verbose=1, 
+                          restore_best_weights=True),
             TensorBoard(log_dir=tensorboard_save_path),
             ModelCheckpoint(filepath=weights_save_file,
-                            verbose=1, monitor='val_loss', save_best_only=True)
+                            verbose=1, 
+                            monitor=checkpoint_callback_monitor, 
+                            save_best_only=True)
         ]
 
         history = model.fit_generator(train_generator,
@@ -208,23 +218,38 @@ class EmbeddingNet:
             pairs, targets)
         return val_loss, val_accuracy
 
-    def train_generator(self, steps_per_epoch, epochs, callbacks=[], val_steps=100, with_val=True, batch_size=8, verbose=1):
+    def train_generator(self, 
+                        steps_per_epoch, 
+                        epochs, 
+                        callbacks=[], 
+                        val_steps=100,  
+                        batch_size=8, 
+                        verbose=1):
 
         train_generator = self.data_loader.generate(
             batch_size, mode=self.mode, s="train")
-        val_generator = self.data_loader.generate(
-            batch_size, mode=self.mode, s="val")
+        
+        if 'val' in self.data_loader.data_subsets and self.cfg_params['to_validate']:
+            val_generator = self.data_loader.generate(
+                batch_size, mode=self.mode, s="val")
+        else:
+            val_generator = None
 
-        history = self.model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                                           verbose=verbose, validation_data=val_generator, validation_steps=val_steps, callbacks=callbacks)
+        history = self.model.fit_generator(train_generator, 
+                                           steps_per_epoch=steps_per_epoch, 
+                                           epochs=epochs,
+                                           verbose=verbose, 
+                                           validation_data=val_generator, 
+                                           validation_steps=val_steps, 
+                                           callbacks=callbacks)
 
         return history
 
     def train_generator_mining(self,
                                steps_per_epoch,
-                               epochs, callbacks=[],
+                               epochs, 
+                               callbacks=[],
                                val_steps=100,
-                               with_val=True,
                                n_classes=4,
                                n_samples=4,
                                val_batch=8,
@@ -233,8 +258,12 @@ class EmbeddingNet:
 
         train_generator = self.data_loader.generate_mining(
             self.base_model, n_classes, n_samples, margin=self.margin, negative_selection_mode=negative_selection_mode, s="train")
-        val_generator = self.data_loader.generate(
-            val_batch, mode=self.mode, s="val")
+        
+        if 'val' in self.data_loader.data_subsets and self.cfg_params['to_validate']:
+            val_generator = self.data_loader.generate(
+                val_batch, mode=self.mode, s="val")
+        else:
+            val_generator = None
 
         history = self.model.fit_generator(train_generator,
                                            steps_per_epoch=steps_per_epoch,

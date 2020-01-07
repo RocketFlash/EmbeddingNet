@@ -17,10 +17,9 @@ class EmbeddingNetImageLoader:
                        augmentations=None, 
                        min_n_obj_per_class = None,
                        select_max_n_obj_per_class = None, 
-                       max_n_obj_per_class = None, 
-                       data_subsets=['train', 'val']):
+                       max_n_obj_per_class = None):
         self.dataset_path = dataset_path
-        self.data_subsets = data_subsets
+        self.data_subsets = [d.split('/')[-1] for d in os.listdir(self.dataset_path) if os.path.isdir(os.path.join(self.dataset_path, d))]
         self.images_paths = {}
         self.images_labels = {}
         self.input_shape = input_shape
@@ -28,14 +27,14 @@ class EmbeddingNetImageLoader:
         self.min_n_obj_per_class = min_n_obj_per_class if min_n_obj_per_class else 0
         self.select_max_n_obj_per_class = select_max_n_obj_per_class if select_max_n_obj_per_class else 1e10
         self.max_n_obj_per_class = max_n_obj_per_class if max_n_obj_per_class else 1e10
-        self.current_idx = {d: 0 for d in data_subsets}
+        self.current_idx = {d: 0 for d in self.data_subsets}
         self._load_images_paths()
         self.classes = {
-            s: sorted(list(set(self.images_labels[s]))) for s in data_subsets}
-        self.n_classes = {s: len(self.classes[s]) for s in data_subsets}
-        self.n_samples = {d: len(self.images_paths[d]) for d in data_subsets}
+            s: sorted(list(set(self.images_labels[s]))) for s in self.data_subsets}
+        self.n_classes = {s: len(self.classes[s]) for s in self.data_subsets}
+        self.n_samples = {d: len(self.images_paths[d]) for d in self.data_subsets}
         self.indexes = {d: {cl: np.where(np.array(self.images_labels[d]) == cl)[
-            0] for cl in self.classes[d]} for d in data_subsets}
+            0] for cl in self.classes[d]} for d in self.data_subsets}
 
     def _load_images_paths(self):
         skip_list = ['train','val','test']
