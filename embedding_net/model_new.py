@@ -1,20 +1,20 @@
 import os
 import numpy as np
-import keras.backend as K
+import tensorflow.keras.backend as K
 import cv2
 import random
 import keras
-from keras.models import Model, load_model
-from keras import optimizers
-from keras.layers import Dense, Input, Lambda, concatenate
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras import optimizers
+from tensorflow.keras.layers import Dense, Input, Lambda, concatenate, GlobalAveragePooling2D
 import pickle
-from .utils import load_encodings
+from .utils import load_encodings, parse_net_params
 from .backbones import get_backbone
 from . import losses_and_accuracies as lac
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
-from keras.callbacks import TensorBoard, LearningRateScheduler
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
 # TODO
 # [] - implement magnet loss
@@ -31,7 +31,8 @@ class EmbeddingNet:
     mode = 'triplet' -> Triplen network
     """
 
-    def __init__(self,  cfg_params, training = True):
+    def __init__(self,  cfg_path, training = True):
+        params = parse_net_params(cfg_path)
         self.input_shape = cfg_params['input_shape']
         self.encodings_len = cfg_params['encodings_len']
         self.backbone = cfg_params['backbone']
@@ -70,12 +71,12 @@ class EmbeddingNet:
         else: 
             is_binary = False
 
-        x = keras.layers.GlobalAveragePooling2D()(self.backbone_model.output)
+        x = GlobalAveragePooling2D()(self.backbone_model.output)
         if is_binary:
-            output = keras.layers.Dense(1, activation='softmax')(x)
+            output = Dense(1, activation='softmax')(x)
         else:
-            output = keras.layers.Dense(n_classes, activation='softmax')(x)
-        model = keras.models.Model(inputs=[self.backbone_model.input], outputs=[output])
+            output = Dense(n_classes, activation='softmax')(x)
+        model = Model(inputs=[self.backbone_model.input], outputs=[output])
 
         # train
         mloss = 'binary_crossentropy' if is_binary else 'categorical_crossentropy'
@@ -204,20 +205,6 @@ class EmbeddingNet:
         self.model.compile(loss=lac.triplet_loss(
             self.margin), optimizer=self.optimizer)
 
-    def train_on_batch(self, batch_size=8, s="train"):
-        generator = self.data_loader.generate(batch_size, s=s)
-        pairs, targets = next(generator)
-        train_loss, train_accuracy = self.model.train_on_batch(
-            pairs, targets)
-        return train_loss, train_accuracy
-
-    def validate_on_batch(self, batch_size=8, s="val"):
-        generator = self.data_loader.generate(batch_size, s=s)
-        pairs, targets = next(generator)
-        val_loss, val_accuracy = self.model.test_on_batch(
-            pairs, targets)
-        return val_loss, val_accuracy
-
     def train_generator(self, 
                         steps_per_epoch, 
                         epochs, 
@@ -290,14 +277,12 @@ class EmbeddingNet:
             val_accuracies_it) / len(val_accuracies_it)
         return val_loss_epoch, val_accuracy_epoch
 
-
     def _generate_encoding(self, img_path):
         img = self.data_loader.get_image(img_path)
         if img is None:
             return None
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         return encoding
-
 
     def generate_encodings(self, save_file_name='encodings.pkl', only_centers=False, max_num_samples_of_each_class=10, knn_k=1, shuffle=True):
         data_paths, data_labels, data_encodings = [], [], []
@@ -414,3 +399,7 @@ class EmbeddingNet:
         accuracies['top5'] = correct_top5/total_n_of_images
 
         return accuracies
+
+
+class TripletNet(EmbeddingNet):
+    pass

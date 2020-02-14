@@ -1,17 +1,17 @@
-from keras.layers import Dense, Input, Lambda, Dropout, Flatten
-from keras.layers import Conv2D, MaxPool2D, BatchNormalization, concatenate
-from keras.models import Model
-from keras.regularizers import l2
-import keras.backend as K
+from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten
+from tensorflow.keras.layers import Conv2D, MaxPool2D, BatchNormalization, concatenate
+from tensorflow.keras.models import Model
+from tensorflow.keras.regularizers import l2
+import tensorflow.keras.backend as K
 
 
 def get_backbone(input_shape,
                  encodings_len=4096,
-                 backbone_type='simple',
+                 backbone_name='simple',
                  embeddings_normalization=True,
                  backbone_weights='imagenet',
                  freeze_backbone=False):
-    if backbone_type == 'simple':
+    if backbone_name == 'simple':
         input_image = Input(input_shape)
         x = Conv2D(64, (10, 10), activation='relu',
                    kernel_regularizer=l2(2e-4))(input_image)
@@ -34,7 +34,7 @@ def get_backbone(input_shape,
                 x, axis=1), name='l2_norm')(encoded_output)
         base_model = Model(
             inputs=[input_image], outputs=[encoded_output])
-    elif backbone_type == 'simple2':
+    elif backbone_name == 'simple2':
         input_image = Input(input_shape)
         x = Conv2D(32, kernel_size=3, activation='relu',
                    kernel_regularizer=l2(2e-4))(input_image)
@@ -76,11 +76,28 @@ def get_backbone(input_shape,
         base_model = Model(
             inputs=[input_image], outputs=[encoded_output])
     else:
-        from classification_models.keras import Classifiers
-        classifier, preprocess_input = Classifiers.get(backbone_type)
-        backbone_model = classifier(input_shape=input_shape,
-                                    weights=backbone_weights,
-                                    include_top=False)
+        if backbone_name.startswith('efficientnet'):
+            import efficientnet.tfkeras as efn
+            efficientnet_models = {
+                'efficientnet-b0': efn.EfficientNetB0,
+                'efficientnet-b1': efn.EfficientNetB1,
+                'efficientnet-b2': efn.EfficientNetB2,
+                'efficientnet-b3': efn.EfficientNetB3,
+                'efficientnet-b4': efn.EfficientNetB4,
+                'efficientnet-b5': efn.EfficientNetB5,
+                'efficientnet-b6': efn.EfficientNetB6,
+                'efficientnet-b7': efn.EfficientNetB7,
+            }
+            Efficientnet_model = efficientnet_models[backbone_name]
+            backbone_model = Efficientnet_model(input_shape=input_shape, 
+                                            weights=backbone_weights, 
+                                            include_top=False)
+        else:
+            from classification_models.tfkeras import Classifiers
+            classifier, preprocess_input = Classifiers.get(backbone_name)
+            backbone_model = classifier(input_shape=input_shape,
+                                        weights=backbone_weights,
+                                        include_top=False)
 
         if freeze_backbone:
             for layer in backbone_model.layers[:-2]:

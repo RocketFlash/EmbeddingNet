@@ -2,8 +2,8 @@ import os
 import numpy as np
 from embedding_net.model import EmbeddingNet
 from embedding_net.pretrain_backbone_softmax import pretrain_backbone_softmax
-from keras.callbacks import TensorBoard, LearningRateScheduler
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from embedding_net.utils import parse_net_params, plot_grapths
 import argparse
 
