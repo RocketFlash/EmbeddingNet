@@ -12,7 +12,9 @@ class ENDataLoader():
     def __init__(self, dataset_path,
                        csv_file=None,
                        image_id_column = 'image_id',
-                       label_column = 'label'):
+                       label_column = 'label',
+                       validate = True,
+                       val_ratio = 0.1):
 
         self.dataset_path = dataset_path
         self.class_files_paths = {}
@@ -26,6 +28,15 @@ class ENDataLoader():
         self.n_classes = len(self.class_names)
         self.n_samples = {k: len(v) for k, v in self.class_files_paths.items()}
 
+        self.validate = validate
+        self.val_ratio = val_ratio
+
+        if self.validate:
+            self.train_data, self.val_data = self.split_train_val(self.val_ratio)
+        else:
+            self.train_data = self.class_files_paths
+            self.val_data = {}
+
     def split_train_val(self, val_ratio):
         train_data = {}
         val_data = {}
@@ -33,7 +44,7 @@ class ENDataLoader():
             train_d, val_d = train_test_split(v, test_size=val_ratio, random_state=42)
             train_data[k] = train_d
             val_data[k] = val_d
-        return train_data, val_data, self.class_names
+        return train_data, val_data
 
     def _load_from_dataframe(self, csv_file, image_id_column, label_column):
         dataframe = pd.read_csv(csv_file)
@@ -110,20 +121,22 @@ class ENDataGenerator(Sequence):
 class TripletsDataGenerator(ENDataGenerator):
 
     def __init__(self, embedding_model,
-                       dataset_path,
+                       class_files_paths,
+                       class_names,
                        n_batches = 10,
                        input_shape=None,
                        batch_size = 32,
-                       csv_file=None,
-                       image_id_column = 'image_id',
-                       label_column = 'label', 
                        augmentations=None,
                        k_classes=5,
                        k_samples=5,
                        margin=0.5,
                        negative_selection_mode='semihard'):
-        super().__init__(dataset_path, input_shape, batch_size, n_batches, csv_file, 
-                         image_id_column,label_column, augmentations)
+        super().__init__(class_files_paths=class_files_paths, 
+                         clas_names=class_names, 
+                         input_shape=input_shape, 
+                         batch_size=batch_size, 
+                         n_batches=n_batches, 
+                         augmentations=augmentations)
         modes = {'semihard' : self.semihard_negative,
                  'hardest': self.hardest_negative,
                  'random_hard': self.random_hard_negative}
@@ -210,16 +223,18 @@ class TripletsDataGenerator(ENDataGenerator):
 
 
 class SimpleTripletsDataGenerator(ENDataGenerator):
-    def __init__(self, dataset_path,
+    def __init__(self, class_files_paths,
+                       class_names,
                        input_shape=None,
                        batch_size = 32,
-                       n_batches = 10,
-                       csv_file=None,
-                       image_id_column = 'image_id',
-                       label_column = 'label', 
+                       n_batches = 10, 
                        augmentations=None):
-        super().__init__(dataset_path, input_shape, batch_size, n_batches, csv_file, 
-                         image_id_column,label_column, augmentations)
+        super().__init__(class_files_paths=class_files_paths, 
+                         clas_names=class_names, 
+                         input_shape=input_shape, 
+                         batch_size=batch_size, 
+                         n_batches=n_batches, 
+                         augmentations=augmentations)
 
     def get_batch_triplets(self):
         triplets = [np.zeros((self.batch_size, self.input_shape[0], self.input_shape[1], 3)),
@@ -261,17 +276,19 @@ class SimpleTripletsDataGenerator(ENDataGenerator):
 
 class SiameseDataGenerator(ENDataGenerator):
 
-    def __init__(self, dataset_path,
+    def __init__(self, class_files_paths,
+                       class_names,
                        input_shape=None,
                        batch_size = 32,
-                       n_batches = 10,
-                       csv_file=None,
-                       image_id_column = 'image_id',
-                       label_column = 'label', 
+                       n_batches = 10, 
                        augmentations=None):
 
-        super().__init__(dataset_path, input_shape, batch_size, n_batches, dataframe, 
-                         image_id_column,label_column, augmentations)
+        super().__init__(class_files_paths=class_files_paths, 
+                         clas_names=class_names, 
+                         input_shape=input_shape, 
+                         batch_size=batch_size, 
+                         n_batches=n_batches, 
+                         augmentations=augmentations)
 
     def get_batch_pairs(self):
         pairs = [np.zeros((self.batch_size, self.input_shape[0], self.input_shape[1], 3)), np.zeros(
@@ -318,3 +335,43 @@ class SiameseDataGenerator(ENDataGenerator):
 
     def __getitem__(self, index):
         return self.get_batch_pairs()
+
+
+class SimpleDataGenerator(ENDataGenerator):
+    def __init__(self, class_files_paths,
+                       class_names,
+                       input_shape=None,
+                       batch_size = 32,
+                       n_batches = 10, 
+                       augmentations=None):
+
+        super().__init__(class_files_paths=class_files_paths, 
+                         clas_names=class_names, 
+                         input_shape=input_shape, 
+                         batch_size=batch_size, 
+                         n_batches=n_batches, 
+                         augmentations=augmentations)
+    
+    def get_batch(self):
+        images = [
+            np.zeros((self.batch_size, self.input_shape[0], self.input_shape[1], 3))]
+        targets = np.zeros((self.batch_size, self.n_classes))
+
+        count = 0
+        with_aug = self.augmentations
+        for i in range(self.batch_size):
+            selected_class_idx = random.randrange(0, self.n_classes)
+            selected_class = self.class_names[selected_class_idx]
+            selected_class_n_elements = len(self.class_files_paths[selected_class])
+
+            indx = random.randrange(0, selected_class_n_elements)
+
+            img = self._get_images_set([selected_class], [indx], with_aug=with_aug)
+            images[0][count, :, :, :] = img[0]
+            targets[i][selected_class_idx] = 1
+            count += 1
+
+        return images, targets
+
+    def __getitem__(self, index):
+        return self.get_batch()

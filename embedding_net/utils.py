@@ -8,7 +8,10 @@ import yaml
 from tensorflow.keras import optimizers
 from .augmentations import get_aug
 from .data_loader import EmbeddingNetImageLoader
-from .datagenerators import TripletsDataGenerator, SiameseDataGenerator, SimpleTripletsDataGenerator
+from .datagenerators import ENDataLoader, 
+                            TripletsDataGenerator, 
+                            SiameseDataGenerator, 
+                            SimpleTripletsDataGenerator
 
 
 def load_encodings(path_to_encodings):
@@ -123,51 +126,59 @@ def plot_batch(data, targets):
 
     plt.show()
 
-def parse_net_params(filename='configs/road_signs.yml'):
-    params = {}
 
-    with open(filename, 'r') as ymlfile:
-        cfg = yaml.safe_load(ymlfile)
-
-    params_model = cfg['MODEL']
-    params_train = cfg['TRAIN']
-    params_paths = cfg['PATHS']
-
-    if 'augmentations_type' in cfg:
-        augmentations = get_aug(cfg['augmentation_type'], cfg['input_shape'])
-    else:
-        augmentations = None
-
-    train_generator_parameters = {'dataset_path' : params_paths['dataset_path'],
-                                'input_shape' : params_model['input_shape'],
-                                'batch_size' : params_train['batch_size'],
-                                'n_batches' : params_train['n_batches'],
-                                'csv_file' : params_paths['csv_file'],
-                                'image_id_column' : params_paths['image_id'],
-                                'label_column' : params_paths['label'], 
-                                'augmentations' : augmentations}
-
-    learning_rate = cfg['learning_rate']
-    if cfg['optimizer'] == 'adam':
+def get_optimizer(name, learning_rate):
+    if name == 'adam':
         optimizer = optimizers.Adam(lr=learning_rate)
-    elif cfg['optimizer'] == 'rms_prop':
+    elif name == 'rms_prop':
         optimizer = optimizers.RMSprop(lr=learning_rate)
-    elif cfg['optimizer'] == 'radam':
+    elif name == 'radam':
         from keras_radam import RAdam
         optimizer = RAdam(learning_rate)
     else:
         optimizer = optimizers.SGD(lr=learning_rate)
+    return optimizer
 
 
-    params = {k: v for k, v in cfg.items() if k not in ['optimizer']}
+def parse_params(filename='configs/road_signs.yml'):
+    with open(filename, 'r') as ymlfile:
+        cfg = yaml.safe_load(ymlfile)
 
-    if 'dataset_path' in cfg:
-        params['loader'] = EmbeddingNetImageLoader(cfg['dataset_path'],
-                                                   input_shape=cfg['input_shape'],
-                                                   min_n_obj_per_class=cfg['min_n_obj_per_class'],
-                                                   select_max_n_obj_per_class = cfg['select_max_n_obj_per_class'], 
-                                                   max_n_obj_per_class=cfg['max_n_obj_per_class'],
-                                                   augmentations=augmentations)
+    if 'augmentations_type' in cfg['GENERATOR']:
+        augmentations = get_aug(cfg['GENERATOR']['augmentation_type'], 
+                                cfg['MODEL']['input_shape'])
+    else:
+        augmentations = None
 
-    params['optimizer'] = optimizer
+    optimizer = get_optimizer(cfg['TRAIN']['optimizer'], 
+                              cfg['TRAIN']['learning_rate'])
+
+    params_dataloader = cfg['DATALOADER']
+    params_generator = cfg['GENERATOR']
+    params_model = cfg['MODEL']
+    params_train = cfg['TRAIN']
+    params_save_paths = cfg['SAVE_PATHS']
+    params_encodings = cfg['ENCODINGS']
+
+    params_generator['input_shape'] = params_model['input_shape']
+    params_train['optimizer'] = optimizer
+    params_model['augmentations'] = augmentations
+
+    params = {'dataloader' : params_dataloader,
+              'generator' : params_generator,
+              'model' : params_model,
+              'train' : params_train,
+              'save_paths': params_save_paths,
+              'encodings' : params_encodings}
+
+    if 'SOFTMAX_PRETRAINING' in cfg:
+        params_softmax = cfg['SOFTMAX_PRETRAINING']
+        params_softmax['augmentations'] = augmentations
+        params_softmax['input_shape'] = params_model['input_shape']
+        softmax_optimizer = get_optimizer(cfg['SOFTMAX_PRETRAINING']['optimizer'], 
+                              cfg['SOFTMAX_PRETRAINING']['learning_rate'])
+        params_softmax['optimizer'] = softmax_optimizer
+        params['softmax'] =  params_softmax
+        
+
     return params

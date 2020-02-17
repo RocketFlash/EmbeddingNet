@@ -8,7 +8,8 @@ from tensorflow.keras.models import Model, load_model
 from tensorflow.keras import optimizers
 from tensorflow.keras.layers import Dense, Input, Lambda, concatenate, GlobalAveragePooling2D
 import pickle
-from .utils import load_encodings, parse_net_params
+from .utils import load_encodings, parse_params
+from .datagenerators import ENDataLoader, SimpleDataGenerator, TripletsDataGenerator, SimpleTripletsDataGenerator, SiameseDataGenerator
 from .backbones import get_backbone
 from . import losses_and_accuracies as lac
 import matplotlib.pyplot as plt
@@ -16,100 +17,77 @@ from sklearn.neighbors import KNeighborsClassifier
 from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
-# TODO
-# [] - implement magnet loss
-# [] - finalize settings with l1 and l2 losses
-
-
 class EmbeddingNet:
-    """
-    SiameseNet for image classification
-    distance_type = 'l1' -> l1_loss
-    distance_type = 'l2' -> l2_loss
 
-    mode = 'siamese' -> Siamese network
-    mode = 'triplet' -> Triplen network
-    """
+    def __init__(self,  cfg):
+        self.params_backbone = cfg['backbone']
+        self.params_dataloader = cfg['dataloader']
+        self.params_generator = cfg['generator']
+        self.params_save_paths = cfg['save_paths']
+        self.params_train = cfg['train']
+        if 'SOFTMAX_PRETRAINING' in cfg:
+            self.params_softmax = cfg['softmax']
 
-    def __init__(self,  cfg_path, training = True):
-        params = parse_net_params(cfg_path)
-        self.input_shape = cfg_params['input_shape']
-        self.encodings_len = cfg_params['encodings_len']
-        self.backbone = cfg_params['backbone']
-        self.backbone_weights = cfg_params['backbone_weights']
-        self.distance_type = cfg_params['distance_type']
-        self.mode = cfg_params['mode']
-        self.optimizer = cfg_params['optimizer']
-        self.freeze_backbone = cfg_params['freeze_backbone']
-        self.data_loader = cfg_params['loader']
-        self.embeddings_normalization = cfg_params['embeddings_normalization']
-        self.margin = cfg_params['margin']
-        self.cfg_params = cfg_params
-
-        self.model = []
-        self.base_model = []
-        self.backbone_model = []
-
-        if self.mode == 'siamese':
-            self._create_model_siamese()
-        elif self.mode == 'triplet':
-            self._create_model_triplet()
-        else:
-            self._create_base_model()
+        self.base_model = {}
+        self.backbone_model = {}
 
         self.encoded_training_data = {}
-
-        if cfg_params['softmax_pretraining'] and training:
-            self.pretrain_backbone_softmax()
+        self.data_loader = {}
 
     def pretrain_backbone_softmax(self):
-        input_shape = self.cfg_params['input_shape']
-        dataset_path = self.cfg_params['dataset_path']
-        n_classes = self.data_loader.n_classes['train']
-        if 'softmax_is_binary' in self.cfg_params:
-            is_binary = self.cfg_params['softmax_is_binary']
-        else: 
-            is_binary = False
+
+        optimizer = self.params_softmax['optimizer']
+        learning_rate = self.params_softmax['learning_rate']
+        decay_factor = self.params_softmax['decay_factor']
+        step_size = self.params_softmax['step_size']
+
+        input_shape = self.params_softmax['input_shape']
+        batch_size = self.params_softmax['batch_size']
+        val_steps = self.params_softmax['val_steps']
+        steps_per_epoch = self.params_softmax['steps_per_epoch']
+        n_epochs = self.params_softmax['n_epochs']
+        augmentations = self.params_softmax['augmentations']
+
+        n_classes = self.data_loader.n_classes
 
         x = GlobalAveragePooling2D()(self.backbone_model.output)
-        if is_binary:
-            output = Dense(1, activation='softmax')(x)
-        else:
-            output = Dense(n_classes, activation='softmax')(x)
+
+        output = Dense(n_classes, activation='softmax')(x)
         model = Model(inputs=[self.backbone_model.input], outputs=[output])
 
         # train
-        mloss = 'binary_crossentropy' if is_binary else 'categorical_crossentropy'
-        model.compile(optimizer='Adam',
-                    loss=mloss, metrics=['accuracy'])
+        model.compile(optimizer=optimizer,
+                      loss='categorical_crossentropy', 
+                      metrics=['accuracy'])
 
-        batch_size_train = self.cfg_params['softmax_batch_size_train']
-        batch_size_val = self.cfg_params['softmax_batch_size_val']
-        val_steps = self.cfg_params['softmax_val_steps']
-        steps_per_epoch = self.cfg_params['softmax_steps_per_epoch']
-        epochs = self.cfg_params['softmax_epochs']
+        train_generator = SimpleDataGenerator(self.data_loader.train_data,
+                                              self.class_names,
+                                              input_shape=input_shape,
+                                              batch_size = batch_size,
+                                              n_batches = steps_per_epoch, 
+                                              augmentations=augmentations)
 
-        train_generator = self.data_loader.generate(batch_size_train,is_binary=is_binary, mode='simple', s="train")
-        if 'val' in self.data_loader.data_subsets and self.cfg_params['to_validate']:
-            val_generator = self.data_loader.generate(batch_size_val,is_binary=is_binary, mode='simple', s="val")
+        if self.data_loader.validate:
+            val_generator = SimpleDataGenerator(self.data_loader.val_data,
+                                              self.class_names,
+                                              input_shape=input_shape,
+                                              batch_size = batch_size,
+                                              n_batches = steps_per_epoch, 
+                                              augmentations=augmentations)
             checkpoint_callback_monitor = 'val_loss'
         else:
             val_generator = None
             checkpoint_callback_monitor = 'loss'
 
         tensorboard_save_path = os.path.join(
-            self.cfg_params['work_dir'], 'tf_log/pretraining_model/')
+            self.params_save_paths['work_dir'], 'tf_log/pretraining_model/')
         weights_save_file = os.path.join(
-            self.cfg_params['work_dir'], 
+            self.params_save_paths['work_dir'], 
             'weights/pretraining_model/',
-            self.cfg_params['model_save_name'])
-
-        initial_lr = self.cfg_params['learning_rate']
-        decay_factor = self.cfg_params['decay_factor']
-        step_size = self.cfg_params['step_size']
+            self.params_save_paths['model_save_name'])
 
         callbacks = [
-            LearningRateScheduler(lambda x: initial_lr *
+            LearningRateScheduler(lambda x: learning_rate *
                                 decay_factor ** np.floor(x/step_size)),
             ReduceLROnPlateau(monitor=checkpoint_callback_monitor, factor=0.1,
                             patience=20, verbose=1),
@@ -126,156 +104,29 @@ class EmbeddingNet:
 
         history = model.fit_generator(train_generator,
                                     steps_per_epoch=steps_per_epoch,
-                                    epochs=epochs,
+                                    epochs=n_epochs,
                                     verbose=1,
                                     validation_data=val_generator,
                                     validation_steps=val_steps,
                                     callbacks=callbacks)
 
-    def _create_base_model(self):
-        self.base_model, self.backbone_model = get_backbone(input_shape=self.input_shape,
-                                                            encodings_len=self.encodings_len,
-                                                            backbone_name=self.backbone,
-                                                            embeddings_normalization=self.embeddings_normalization,
-                                                            backbone_weights=self.backbone_weights,
-                                                            freeze_backbone=self.freeze_backbone)
+    def _create_base_model(self, params_backbone):
+        self.base_model, self.backbone_model = get_backbone(**params_backbone)
 
-    def _create_model_siamese(self):
+    def _create_dataloader(self, dataloader_params):
+        return ENDataLoader(**dataloader_params)
 
-        input_image_1 = Input(self.input_shape)
-        input_image_2 = Input(self.input_shape)
-
-        self._create_base_model()
-        self.base_model._make_predict_function()
-
-        image_encoding_1 = self.base_model(input_image_1)
-        image_encoding_2 = self.base_model(input_image_2)
-
-        if self.distance_type == 'l1':
-            L1_layer = Lambda(
-                lambda tensors: K.abs(tensors[0] - tensors[1]))
-            distance = L1_layer([image_encoding_1, image_encoding_2])
-
-            prediction = Dense(units=1, activation='sigmoid')(distance)
-            metric = 'binary_accuracy'
-
-        elif self.distance_type == 'l2':
-
-            L2_layer = Lambda(
-                lambda tensors: K.sqrt(K.maximum(K.sum(K.square(tensors[0] - tensors[1]), axis=1, keepdims=True), K.epsilon())))
-            distance = L2_layer([image_encoding_1, image_encoding_2])
-
-            prediction = distance
-            metric = lac.accuracy
-
-        self.model = Model(
-            inputs=[input_image_1, input_image_2], outputs=prediction)
-
-        print('Base model summary')
-        self.base_model.summary()
-
-        print('Whole model summary')
-        self.model.summary()
-
-        self.model.compile(loss=lac.contrastive_loss, metrics=[metric],
-                           optimizer=self.optimizer)
-
-    def _create_model_triplet(self):
-        input_image_a = Input(self.input_shape)
-        input_image_p = Input(self.input_shape)
-        input_image_n = Input(self.input_shape)
-
-        self._create_base_model()
-        self.base_model._make_predict_function()
-        image_encoding_a = self.base_model(input_image_a)
-        image_encoding_p = self.base_model(input_image_p)
-        image_encoding_n = self.base_model(input_image_n)
-
-        merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n],
-                                    axis=-1, name='merged_layer')
-        self.model = Model(inputs=[input_image_a, input_image_p, input_image_n],
-                           outputs=merged_vector)
-
-        print('Base model summary')
-        self.base_model.summary()
-
-        print('Whole model summary')
-        self.model.summary()
-
-        self.model.compile(loss=lac.triplet_loss(
-            self.margin), optimizer=self.optimizer)
-
-    def train_generator(self, 
-                        steps_per_epoch, 
-                        epochs, 
-                        callbacks=[], 
-                        val_steps=100,  
-                        batch_size=8, 
-                        verbose=1):
-
-        train_generator = self.data_loader.generate(
-            batch_size, mode=self.mode, s="train")
-        
-        if 'val' in self.data_loader.data_subsets and self.cfg_params['to_validate']:
-            val_generator = self.data_loader.generate(
-                batch_size, mode=self.mode, s="val")
-        else:
-            val_generator = None
-
-        history = self.model.fit_generator(train_generator, 
-                                           steps_per_epoch=steps_per_epoch, 
-                                           epochs=epochs,
-                                           verbose=verbose, 
-                                           validation_data=val_generator, 
-                                           validation_steps=val_steps, 
-                                           callbacks=callbacks)
+    def _create_generators(self):
+        pass
+    
+    def train_generator(self, callbacks=[], verbose=1):
+        history = self.model.fit_generator(self.train_generator,
+                                           validation_data=self.val_generator,  
+                                           epochs=self.params_train['n_epoch'], 
+                                           callbacks=callbacks,
+                                           verbose=verbose)
 
         return history
-
-    def train_generator_mining(self,
-                               steps_per_epoch,
-                               epochs, 
-                               callbacks=[],
-                               val_steps=100,
-                               n_classes=4,
-                               n_samples=4,
-                               val_batch=8,
-                               negative_selection_mode='semihard',
-                               verbose=1):
-
-        train_generator = self.data_loader.generate_mining(
-            self.base_model, n_classes, n_samples, margin=self.margin, negative_selection_mode=negative_selection_mode, s="train")
-        
-        if 'val' in self.data_loader.data_subsets and self.cfg_params['to_validate']:
-            val_generator = self.data_loader.generate(
-                val_batch, mode=self.mode, s="val")
-        else:
-            val_generator = None
-
-        history = self.model.fit_generator(train_generator,
-                                           steps_per_epoch=steps_per_epoch,
-                                           epochs=epochs,
-                                           verbose=verbose,
-                                           validation_data=val_generator,
-                                           validation_steps=val_steps,
-                                           callbacks=callbacks)
-        return history
-
-    def validate(self, number_of_comparisons=100, batch_size=4, s="val"):
-        generator = self.data_loader.generate(batch_size, s=s)
-        val_accuracies_it = []
-        val_losses_it = []
-        for _ in range(number_of_comparisons):
-            pairs, targets = next(generator)
-
-            val_loss_it, val_accuracy_it = self.model.test_on_batch(
-                pairs, targets)
-            val_accuracies_it.append(val_accuracy_it)
-            val_losses_it.append(val_loss_it)
-        val_loss_epoch = sum(val_losses_it) / len(val_losses_it)
-        val_accuracy_epoch = sum(
-            val_accuracies_it) / len(val_accuracies_it)
-        return val_loss_epoch, val_accuracy_epoch
 
     def _generate_encoding(self, img_path):
         img = self.data_loader.get_image(img_path)
@@ -284,7 +135,11 @@ class EmbeddingNet:
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         return encoding
 
-    def generate_encodings(self, save_file_name='encodings.pkl', only_centers=False, max_num_samples_of_each_class=10, knn_k=1, shuffle=True):
+    def generate_encodings(self, save_file_name='encodings.pkl', 
+                                 only_centers=False, 
+                                 max_num_samples_of_each_class=10, 
+                                 knn_k=1, 
+                                 shuffle=True):
         data_paths, data_labels, data_encodings = [], [], []
         classes_counter = {}
         classes_encodings = {}
@@ -402,4 +257,112 @@ class EmbeddingNet:
 
 
 class TripletNet(EmbeddingNet):
-    pass
+
+    def __init__(self, cfg, training=False):
+        super().__init__(cfg)
+        self._create_base_model()
+        self.base_model._make_predict_function()
+
+        self.model = self._create_model_triplet()
+
+        if training:
+            self.dataloader = {}
+            self.train_generator = {}
+            self.val_generator = {}
+            self._create_generators()
+
+    def _create_generators(self):
+        self.train_generator = TripletsDataGenerator(embedding_model=self.base_model,
+                                               self.data_loader.train_data,
+                                               self.data_loader.class_names,
+                                               **self.params_generator)
+        if self.data_loader.validate:
+            self.val_generator = SimpleTripletsDataGenerator(self.data_loader.val_data,
+                                               self.data_loader.class_names,
+                                               **self.params_generator)
+        else:
+            self.val_generator = None
+    
+    def _create_model_triplet(self):
+        input_image_a = Input(self.input_shape)
+        input_image_p = Input(self.input_shape)
+        input_image_n = Input(self.input_shape)
+
+        image_encoding_a = self.base_model(input_image_a)
+        image_encoding_p = self.base_model(input_image_p)
+        image_encoding_n = self.base_model(input_image_n)
+
+        merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n],
+                                    axis=-1, name='merged_layer')
+        self.model = Model(inputs=[input_image_a, input_image_p, input_image_n],
+                           outputs=merged_vector)
+
+        print('Base model summary')
+        self.base_model.summary()
+
+        print('Whole model summary')
+        self.model.summary()
+
+        self.model.compile(loss=lac.triplet_loss(
+            self.margin), optimizer=self.optimizer)
+
+
+class SiameseNet(EmbeddingNet):
+
+    def __init__(self, cfg, training):
+        super().__init__(cfg)
+        self.model = self._create_model_siamese()
+        if training:
+            self.dataloader = {}
+            self.train_generator = {}
+            self.val_generator = {}
+            self.train_generator = TripletsDataGenerator(**train_generator_params)
+            self.val_generator = TripletsDataGenerator(**val_generator_params)
+
+    def _create_generators(self):
+        self.train_generator = TripletsDataGenerator(embedding_model=self.base_model,
+                                               self.data_loader.train_data,
+                                               self.data_loader.class_names,
+                                               **self.params_generator)
+        if self.data_loader.validate:
+            self.val_generator = TripletsDataGenerator(embedding_model=self.base_model,
+                                               self.data_loader.val_data,
+                                               self.data_loader.class_names,
+                                               **self.params_generator)
+
+    def _create_model_siamese(self):
+
+        input_image_1 = Input(self.input_shape)
+        input_image_2 = Input(self.input_shape)
+
+        image_encoding_1 = self.base_model(input_image_1)
+        image_encoding_2 = self.base_model(input_image_2)
+
+        if self.distance_type == 'l1':
+            L1_layer = Lambda(
+                lambda tensors: K.abs(tensors[0] - tensors[1]))
+            distance = L1_layer([image_encoding_1, image_encoding_2])
+
+            prediction = Dense(units=1, activation='sigmoid')(distance)
+            metric = 'binary_accuracy'
+
+        elif self.distance_type == 'l2':
+
+            L2_layer = Lambda(
+                lambda tensors: K.sqrt(K.maximum(K.sum(K.square(tensors[0] - tensors[1]), axis=1, keepdims=True), K.epsilon())))
+            distance = L2_layer([image_encoding_1, image_encoding_2])
+
+            prediction = distance
+            metric = lac.accuracy
+
+        self.model = Model(
+            inputs=[input_image_1, input_image_2], outputs=prediction)
+
+        print('Base model summary')
+        self.base_model.summary()
+
+        print('Whole model summary')
+        self.model.summary()
+
+        self.model.compile(loss=lac.contrastive_loss, metrics=[metric],
+                           optimizer=self.optimizer)
