@@ -130,9 +130,9 @@ class TripletsDataGenerator(ENDataGenerator):
                        k_classes=5,
                        k_samples=5,
                        margin=0.5,
-                       negative_selection_mode='semihard'):
+                       negatives_selection_mode='semihard'):
         super().__init__(class_files_paths=class_files_paths, 
-                         clas_names=class_names, 
+                         class_names=class_names, 
                          input_shape=input_shape, 
                          batch_size=batch_size, 
                          n_batches=n_batches, 
@@ -141,10 +141,10 @@ class TripletsDataGenerator(ENDataGenerator):
                  'hardest': self.hardest_negative,
                  'random_hard': self.random_hard_negative}
         self.embedding_model = embedding_model
-        self.k_classes=k_classes,
-        self.k_samples=k_samples,
-        self.margin=margin
-        self.negative_selection_fn = modes[negative_selection_mode]
+        self.k_classes = k_classes
+        self.k_samples = k_samples
+        self.margin = margin
+        self.negative_selection_fn = modes[negatives_selection_mode]
 
     def hardest_negative(self, loss_values, margin=0.5):
         hard_negative = np.argmax(loss_values)
@@ -160,7 +160,6 @@ class TripletsDataGenerator(ENDataGenerator):
         return np.random.choice(semihard_negatives) if len(semihard_negatives) > 0 else None
 
     def get_batch_triplets_mining(self):
-
         selected_classes_idxs = np.random.choice(self.n_classes, size=self.k_classes, replace=False)
         selected_classes = [self.class_names[cl] for cl in selected_classes_idxs]
         selected_classes_n_elements = [self.n_samples[cl] for cl in selected_classes]
@@ -228,9 +227,10 @@ class SimpleTripletsDataGenerator(ENDataGenerator):
                        input_shape=None,
                        batch_size = 32,
                        n_batches = 10, 
-                       augmentations=None):
+                       augmentations=None,
+                       **kwargs):
         super().__init__(class_files_paths=class_files_paths, 
-                         clas_names=class_names, 
+                         class_names=class_names, 
                          input_shape=input_shape, 
                          batch_size=batch_size, 
                          n_batches=n_batches, 
@@ -284,7 +284,7 @@ class SiameseDataGenerator(ENDataGenerator):
                        augmentations=None):
 
         super().__init__(class_files_paths=class_files_paths, 
-                         clas_names=class_names, 
+                         class_names=class_names, 
                          input_shape=input_shape, 
                          batch_size=batch_size, 
                          n_batches=n_batches, 
@@ -346,7 +346,7 @@ class SimpleDataGenerator(ENDataGenerator):
                        augmentations=None):
 
         super().__init__(class_files_paths=class_files_paths, 
-                         clas_names=class_names, 
+                         class_names=class_names, 
                          input_shape=input_shape, 
                          batch_size=batch_size, 
                          n_batches=n_batches, 

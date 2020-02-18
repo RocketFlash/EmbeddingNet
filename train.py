@@ -1,10 +1,9 @@
 import os
 import numpy as np
-from embedding_net.model import EmbeddingNet
-from embedding_net.pretrain_backbone_softmax import pretrain_backbone_softmax
+from embedding_net.model_new import EmbeddingNet, TripletNet
 from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from embedding_net.utils import parse_net_params, plot_grapths
+from embedding_net.utils import parse_params, plot_grapths
 import argparse
 
 
@@ -18,37 +17,47 @@ def parse_args():
 
     return args
 
+def create_save_folders(params):
+    work_dir_path = os.path.join(params['work_dir'], params['project_name'])
+    weights_save_path = os.path.join(work_dir_path, 'weights/')
+    weights_pretrained_save_path = os.path.join(work_dir_path, 'pretraining_model/weights/')
+    encodings_save_path = os.path.join(work_dir_path, 'encodings/')
+    plots_save_path = os.path.join(work_dir_path, 'plots/')
+    tensorboard_save_path = os.path.join(work_dir_path, 'tf_log/')
+    tensorboard_pretrained_save_path = os.path.join(work_dir_path, 'pretraining_model/tf_log/')
+    weights_save_file_path = os.path.join(weights_save_path, 'best_' + params['project_name'] + '.h5')
 
-def main():
-    args = parse_args()
-    cfg_params = parse_net_params(args.config)
-    os.makedirs(cfg_params['work_dir'], exist_ok=True)
-    weights_save_path = os.path.join(cfg_params['work_dir'], 'weights/')
-    weights_pretrained_save_path = os.path.join(weights_save_path, 'pretraining_model/')
-    encodings_save_path = os.path.join(cfg_params['work_dir'], 'encodings/')
-    plots_save_path = os.path.join(cfg_params['work_dir'], 'plots/')
-    tensorboard_save_path = os.path.join(cfg_params['work_dir'], 'tf_log/')
-
-
+    os.makedirs(work_dir_path , exist_ok=True)
     os.makedirs(weights_save_path, exist_ok=True)
     os.makedirs(weights_pretrained_save_path, exist_ok=True)
     os.makedirs(encodings_save_path, exist_ok=True)
+    os.makedirs(plots_save_path, exist_ok=True)
+    os.makedirs(tensorboard_pretrained_save_path, exist_ok=True)
 
-    model = EmbeddingNet(cfg_params)
-    if cfg_params['mode'] not in ['triplet', 'siamese']:
-        return
+    return tensorboard_save_path, weights_save_file_path, plots_save_path
+
+def main():
+    args = parse_args()
+    cfg_params = parse_params(args.config)
+    params_train = cfg_params['train']
+    params_dataloader = cfg_params['dataloader']
+
+    tensorboard_save_path, weights_save_file_path, plots_save_path = create_save_folders(cfg_params['save_paths'])
+
+    model = TripletNet(cfg_params, training=True)
+
+    if 'softmax' in cfg_params:
+        model.pretrain_backbone_softmax()
+    
     if args.resume_from is not None:
         model.load_model(args.resume_from)
 
 
-    weights_save_file = os.path.join(
-        weights_save_path, cfg_params['model_save_name'])
+    initial_lr = params_train['learning_rate']
+    decay_factor = params_train['decay_factor']
+    step_size = params_train['step_size']
 
-    initial_lr = cfg_params['learning_rate']
-    decay_factor = cfg_params['decay_factor']
-    step_size = cfg_params['step_size']
-
-    if cfg_params['to_validate']:
+    if params_dataloader['validate']:
         callback_monitor = 'val_loss'
     else:
         callback_monitor = 'loss'
@@ -62,34 +71,26 @@ def main():
                       patience=10, 
                       verbose=1),
         TensorBoard(log_dir=tensorboard_save_path),
-        ModelCheckpoint(filepath=weights_save_file,
+        ModelCheckpoint(filepath=weights_save_file_path,
                         verbose=1, monitor=callback_monitor, save_best_only=True)
     ]
 
-    history = model.train_generator_mining(steps_per_epoch=cfg_params['n_steps_per_epoch'],
-                                           epochs=cfg_params['n_epochs'],
-                                           callbacks=callbacks,
-                                           val_steps=cfg_params['val_steps'],
-                                           val_batch=cfg_params['val_batch_size'],
-                                           n_classes=cfg_params['mining_n_classes'],
-                                           n_samples=cfg_params['mining_n_samples'],
-                                           negative_selection_mode=cfg_params['negatives_selection_mode'])
+    history = model.train(callbacks=callbacks)
 
-    if cfg_params['plot_history']:
-        os.makedirs(plots_save_path, exist_ok=True)
+    if params_train['plot_history']:
         plot_grapths(history, plots_save_path)
 
-    if cfg_params['save_encodings']:
-        encodings_save_file = os.path.join(
-            encodings_save_path, cfg_params['encodings_save_name'])
-        model.generate_encodings(save_file_name=encodings_save_file,
-                                 max_num_samples_of_each_class=cfg_params['max_num_samples_of_each_class'],
-                                 knn_k=cfg_params['knn_k'],
-                                 shuffle=True)
-        if cfg_params['to_validate']:
-            model_accuracies = model.calculate_prediction_accuracy()
-            print('Model top1 accuracy on validation set: {}'.format(model_accuracies['top1']))
-            print('Model top5 accuracy on validation set: {}'.format(model_accuracies['top5']))
+    # if cfg_params['save_encodings']:
+    #     encodings_save_file = os.path.join(
+    #         encodings_save_path, cfg_params['encodings_save_name'])
+    #     model.generate_encodings(save_file_name=encodings_save_file,
+    #                              max_num_samples_of_each_class=cfg_params['max_num_samples_of_each_class'],
+    #                              knn_k=cfg_params['knn_k'],
+    #                              shuffle=True)
+    #     if cfg_params['to_validate']:
+    #         model_accuracies = model.calculate_prediction_accuracy()
+    #         print('Model top1 accuracy on validation set: {}'.format(model_accuracies['top1']))
+    #         print('Model top5 accuracy on validation set: {}'.format(model_accuracies['top5']))
 
 
 if __name__ == '__main__':

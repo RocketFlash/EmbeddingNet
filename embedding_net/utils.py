@@ -1,5 +1,6 @@
 from sklearn.manifold import TSNE
 import os
+os.environ["TF_KERAS"] = '1'
 import cv2
 import pickle
 import numpy as np
@@ -7,11 +8,6 @@ from matplotlib import pyplot as plt
 import yaml
 from tensorflow.keras import optimizers
 from .augmentations import get_aug
-from .data_loader import EmbeddingNetImageLoader
-from .datagenerators import ENDataLoader, 
-                            TripletsDataGenerator, 
-                            SiameseDataGenerator, 
-                            SimpleTripletsDataGenerator
 
 
 def load_encodings(path_to_encodings):
@@ -162,7 +158,7 @@ def parse_params(filename='configs/road_signs.yml'):
 
     params_generator['input_shape'] = params_model['input_shape']
     params_train['optimizer'] = optimizer
-    params_model['augmentations'] = augmentations
+    params_generator['augmentations'] = augmentations
 
     params = {'dataloader' : params_dataloader,
               'generator' : params_generator,

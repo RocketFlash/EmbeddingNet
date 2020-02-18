@@ -10,7 +10,8 @@ def get_backbone(input_shape,
                  backbone_name='simple',
                  embeddings_normalization=True,
                  backbone_weights='imagenet',
-                 freeze_backbone=False):
+                 freeze_backbone=False,
+                 **kwargs):
     if backbone_name == 'simple':
         input_image = Input(input_shape)
         x = Conv2D(64, (10, 10), activation='relu',

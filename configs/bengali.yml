@@ -3,7 +3,7 @@ MODEL:
   encodings_len: 256
   mode : 'triplet'
   distance_type : 'l1'
-  backbone : 'resnet18'
+  backbone_name : 'efficientnet-b0'
   backbone_weights : 'imagenet'
   freeze_backbone : False
   embeddings_normalization: True
@@ -12,18 +12,18 @@ DATALOADER:
   dataset_path : '/home/rauf/datasets/bengali/pngs/train/'
   csv_file : '/home/rauf/datasets/bengali/train_new.csv'
   image_id_column : 'image_id'
-  label_column : 'label'
+  label_column : 'grapheme_root'
   validate : True
   val_ratio : 0.2
   
 GENERATOR:
   negatives_selection_mode : 'semihard'
-  mining_n_classes: 5
-  mining_n_samples: 3
+  k_classes: 3
+  k_samples: 5
   margin: 0.5
-  batch_size : 8
-  n_batches : 200
-  augmentation_type : 'default'
+  batch_size : 10
+  n_batches : 10
+  augmentations : 'default'
 
 TRAIN:
   # optimizer parameters
@@ -38,23 +38,21 @@ TRAIN:
   # plot training history
   plot_history : True
 
-SOFTMAX_PRETRAINING:
-  # softmax pretraining parameters
-  optimizer : 'radam'
-  learning_rate : 0.0001
-  decay_factor : 0.99
-  step_size : 1
+# SOFTMAX_PRETRAINING:
+#   # softmax pretraining parameters
+#   optimizer : 'radam'
+#   learning_rate : 0.0001
+#   decay_factor : 0.99
+#   step_size : 1
 
-  batch_size : 8
-  val_steps : 200
-  steps_per_epoch : 500
-  n_epochs : 20
+#   batch_size : 8
+#   val_steps : 200
+#   steps_per_epoch : 10
+#   n_epochs : 1
 
 SAVE_PATHS:
-  work_dir : 'work_dirs/road_signs_resnet18/'
-  encodings_path : 'encodings/'
-  model_save_name : 'best_model_resnet18.h5'
-  encodings_save_name: 'encodings_resnet18.pkl'
+  project_name : 'bengali_efficientnet'
+  work_dir : 'work_dirs/'
 
 ENCODINGS:
   # encodings parameters

@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow.keras.backend as K
 import cv2
 import random
-import keras
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras import optimizers
 from tensorflow.keras.layers import Dense, Input, Lambda, concatenate, GlobalAveragePooling2D
@@ -19,20 +18,22 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCh
 
 class EmbeddingNet:
 
-    def __init__(self,  cfg):
-        self.params_backbone = cfg['backbone']
-        self.params_dataloader = cfg['dataloader']
-        self.params_generator = cfg['generator']
-        self.params_save_paths = cfg['save_paths']
-        self.params_train = cfg['train']
-        if 'SOFTMAX_PRETRAINING' in cfg:
-            self.params_softmax = cfg['softmax']
+    def __init__(self,  params):
+        self.params_model = params['model']
+        self.params_dataloader = params['dataloader']
+        self.params_generator = params['generator']
+        self.params_save_paths = params['save_paths']
+        self.params_train = params['train']
+        if 'softmax' in params:
+            self.params_softmax = params['softmax']
 
-        self.base_model = {}
-        self.backbone_model = {}
+        self.base_model = None
+        self.backbone_model = None
 
         self.encoded_training_data = {}
-        self.data_loader = {}
+        self.dataloader = None
+        self.train_generator = None
+        self.val_generator = None
 
     def pretrain_backbone_softmax(self):
 
@@ -61,7 +62,7 @@ class EmbeddingNet:
                       metrics=['accuracy'])
 
         train_generator = SimpleDataGenerator(self.data_loader.train_data,
-                                              self.class_names,
+                                              self.data_loader.class_names,
                                               input_shape=input_shape,
                                               batch_size = batch_size,
                                               n_batches = steps_per_epoch, 
@@ -69,7 +70,7 @@ class EmbeddingNet:
 
         if self.data_loader.validate:
             val_generator = SimpleDataGenerator(self.data_loader.val_data,
-                                              self.class_names,
+                                              self.data_loader.class_names,
                                               input_shape=input_shape,
                                               batch_size = batch_size,
                                               n_batches = steps_per_epoch, 
@@ -80,11 +81,14 @@ class EmbeddingNet:
             checkpoint_callback_monitor = 'loss'
 
         tensorboard_save_path = os.path.join(
-            self.params_save_paths['work_dir'], 'tf_log/pretraining_model/')
+            self.params_save_paths['work_dir'],
+            self.params_save_paths['project_name'], 
+            'pretraining_model/tf_log/')
         weights_save_file = os.path.join(
-            self.params_save_paths['work_dir'], 
-            'weights/pretraining_model/',
-            self.params_save_paths['model_save_name'])
+            self.params_save_paths['work_dir'],
+            self.params_save_paths['project_name'], 
+            'pretraining_model/weights/',
+            self.params_save_paths['project_name']+'.h5')
 
         callbacks = [
             LearningRateScheduler(lambda x: learning_rate *
@@ -110,30 +114,30 @@ class EmbeddingNet:
                                     validation_steps=val_steps,
                                     callbacks=callbacks)
 
-    def _create_base_model(self, params_backbone):
-        self.base_model, self.backbone_model = get_backbone(**params_backbone)
+    def _create_base_model(self):
+        self.base_model, self.backbone_model = get_backbone(**self.params_model)
 
-    def _create_dataloader(self, dataloader_params):
-        return ENDataLoader(**dataloader_params)
+    def _create_dataloader(self):
+        self.data_loader = ENDataLoader(**self.params_dataloader)
 
     def _create_generators(self):
         pass
     
-    def train_generator(self, callbacks=[], verbose=1):
-        history = self.model.fit_generator(self.train_generator,
-                                           validation_data=self.val_generator,  
-                                           epochs=self.params_train['n_epoch'], 
-                                           callbacks=callbacks,
-                                           verbose=verbose)
-
-        return history
-
     def _generate_encoding(self, img_path):
         img = self.data_loader.get_image(img_path)
         if img is None:
             return None
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         return encoding
+        
+    def train(self, callbacks=[], verbose=1):
+        history = self.model.fit_generator(self.train_generator,
+                                           validation_data=self.val_generator,  
+                                           epochs=self.params_train['n_epochs'], 
+                                           callbacks=callbacks,
+                                           verbose=verbose)
+
+        return history
 
     def generate_encodings(self, save_file_name='encodings.pkl', 
                                  only_centers=False, 
@@ -258,35 +262,32 @@ class EmbeddingNet:
 
 class TripletNet(EmbeddingNet):
 
-    def __init__(self, cfg, training=False):
-        super().__init__(cfg)
+    def __init__(self, params, training=False):
+        super().__init__(params)
         self._create_base_model()
         self.base_model._make_predict_function()
 
-        self.model = self._create_model_triplet()
+        self.training = training
 
-        if training:
-            self.dataloader = {}
-            self.train_generator = {}
-            self.val_generator = {}
+        if self.training:
+            self._create_dataloader()
             self._create_generators()
+            self._create_model_triplet()
 
     def _create_generators(self):
         self.train_generator = TripletsDataGenerator(embedding_model=self.base_model,
-                                               self.data_loader.train_data,
-                                               self.data_loader.class_names,
+                                               class_files_paths=self.data_loader.train_data,
+                                               class_names=self.data_loader.class_names,
                                                **self.params_generator)
         if self.data_loader.validate:
             self.val_generator = SimpleTripletsDataGenerator(self.data_loader.val_data,
                                                self.data_loader.class_names,
                                                **self.params_generator)
-        else:
-            self.val_generator = None
     
     def _create_model_triplet(self):
-        input_image_a = Input(self.input_shape)
-        input_image_p = Input(self.input_shape)
-        input_image_n = Input(self.input_shape)
+        input_image_a = Input(self.params_model['input_shape'])
+        input_image_p = Input(self.params_model['input_shape'])
+        input_image_n = Input(self.params_model['input_shape'])
 
         image_encoding_a = self.base_model(input_image_a)
         image_encoding_p = self.base_model(input_image_p)
@@ -303,42 +304,39 @@ class TripletNet(EmbeddingNet):
         print('Whole model summary')
         self.model.summary()
 
-        self.model.compile(loss=lac.triplet_loss(
-            self.margin), optimizer=self.optimizer)
+        self.model.compile(loss=lac.triplet_loss(self.params_generator['margin']), 
+                                                 optimizer=self.params_train['optimizer'])
 
 
 class SiameseNet(EmbeddingNet):
 
-    def __init__(self, cfg, training):
-        super().__init__(cfg)
-        self.model = self._create_model_siamese()
+    def __init__(self, params, training):
+        super().__init__(params)
+        self._create_model_siamese()
         if training:
             self.dataloader = {}
             self.train_generator = {}
             self.val_generator = {}
-            self.train_generator = TripletsDataGenerator(**train_generator_params)
-            self.val_generator = TripletsDataGenerator(**val_generator_params)
+            self._create_generators()
 
     def _create_generators(self):
-        self.train_generator = TripletsDataGenerator(embedding_model=self.base_model,
-                                               self.data_loader.train_data,
-                                               self.data_loader.class_names,
+        self.train_generator = SiameseDataGenerator(class_files_paths=self.data_loader.train_data,
+                                               class_names=self.data_loader.class_names,
                                                **self.params_generator)
         if self.data_loader.validate:
-            self.val_generator = TripletsDataGenerator(embedding_model=self.base_model,
-                                               self.data_loader.val_data,
-                                               self.data_loader.class_names,
+            self.val_generator = SiameseDataGenerator(class_files_paths=self.data_loader.val_data,
+                                               class_names=self.data_loader.class_names,
                                                **self.params_generator)
 
     def _create_model_siamese(self):
 
-        input_image_1 = Input(self.input_shape)
-        input_image_2 = Input(self.input_shape)
+        input_image_1 = Input(self.params_model['input_shape'])
+        input_image_2 = Input(self.params_model['input_shape'])
 
         image_encoding_1 = self.base_model(input_image_1)
         image_encoding_2 = self.base_model(input_image_2)
 
-        if self.distance_type == 'l1':
+        if self.params_model['distance_type'] == 'l1':
             L1_layer = Lambda(
                 lambda tensors: K.abs(tensors[0] - tensors[1]))
             distance = L1_layer([image_encoding_1, image_encoding_2])
@@ -346,7 +344,7 @@ class SiameseNet(EmbeddingNet):
             prediction = Dense(units=1, activation='sigmoid')(distance)
             metric = 'binary_accuracy'
 
-        elif self.distance_type == 'l2':
+        elif self.params_model['distance_type'] == 'l2':
 
             L2_layer = Lambda(
                 lambda tensors: K.sqrt(K.maximum(K.sum(K.square(tensors[0] - tensors[1]), axis=1, keepdims=True), K.epsilon())))
@@ -365,4 +363,4 @@ class SiameseNet(EmbeddingNet):
         self.model.summary()
 
         self.model.compile(loss=lac.contrastive_loss, metrics=[metric],
-                           optimizer=self.optimizer)
+                           optimizer=self.params_train['optimizer'])
