@@ -1,4 +1,4 @@
-from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten
+from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, GlobalAveragePooling2D
 from tensorflow.keras.layers import Conv2D, MaxPool2D, BatchNormalization, concatenate
 from tensorflow.keras.models import Model
 from tensorflow.keras.regularizers import l2
@@ -105,7 +105,8 @@ def get_backbone(input_shape,
                 layer.trainable = False
         
         after_backbone = backbone_model.output
-        x = Flatten()(after_backbone)
+        x = GlobalAveragePooling2D()(after_backbone)
+        # x = Flatten()(after_backbone)
 
         x = Dense(encodings_len//2, activation="relu")(x)
 

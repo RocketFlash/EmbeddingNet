@@ -103,8 +103,7 @@ class EmbeddingNet:
             ModelCheckpoint(filepath=weights_save_file,
                             verbose=1, 
                             monitor=checkpoint_callback_monitor, 
-                            save_best_only=True)
-        ]
+                            save_best_only=True)]
 
         history = model.fit_generator(train_generator,
                                     steps_per_epoch=steps_per_epoch,
@@ -135,65 +134,48 @@ class EmbeddingNet:
                                            validation_data=self.val_generator,  
                                            epochs=self.params_train['n_epochs'], 
                                            callbacks=callbacks,
-                                           verbose=verbose)
+                                           verbose=verbose,
+                                           use_multiprocessing=True)
 
         return history
 
-    def generate_encodings(self, save_file_name='encodings.pkl', 
-                                 only_centers=False, 
-                                 max_num_samples_of_each_class=10, 
-                                 knn_k=1, 
+    def train_embeddings_classifier(self, 
+                                    classification_model,
+                                    max_n_samples=10,
+                                    shuffle=True):
+        encodings = self.generate_encodings(max_n_samples=max_n_samples,  
+                                shuffle=shuffle)
+        classification_model.fit(encodings['encodings'], 
+                                 encodings['labels'])
+
+    def generate_encodings(self, max_n_samples=10,  
                                  shuffle=True):
         data_paths, data_labels, data_encodings = [], [], []
-        classes_counter = {}
-        classes_encodings = {}
-        k_val = 1 if only_centers else knn_k
+        encoded_training_data = {}
 
-        if shuffle:
-            c = list(zip(
-                self.data_loader.images_paths['train'], self.data_loader.images_labels['train']))
-            random.shuffle(c)
-            self.data_loader.images_paths['train'], self.data_loader.images_labels['train'] = zip(
-                *c)
-
-        for img_path, img_label in zip(self.data_loader.images_paths['train'],
-                                       self.data_loader.images_labels['train']):
-            if only_centers:
-                if img_label not in classes_encodings:
-                    classes_encodings[img_label] = []
-            else:
-                if img_label not in classes_counter:
-                    classes_counter[img_label] = 0
-            if classes_counter[img_label] < max_num_samples_of_each_class:
+        for class_name in self.data_loader.class_names:
+            data_list = self.data_loader.train_data[class_name]
+            if len(data_list)>max_n_samples:
+                if shuffle:
+                    random.shuffle(data_list)
+                data_list = data_list[:max_n_samples]
+            
+            data_paths += data_list
+            data_labels += class_name * len(data_list)
+            for img_path in data_list:
                 encod = self._generate_encoding(img_path)
-                
-                if encod is not None:
-                    if only_centers:
-                        classes_encodings[img_label].append(encod)
-                    else:
-                        data_paths.append(img_path)
-                        data_labels.append(img_label)
-                        data_encodings.append(encod)
-                        classes_counter[img_label] += 1
-        if only_centers:
-            for class_i, encodings_i in classes_encodings.items():
-                encodings_i_np = np.array(encodings_i)
-                class_encoding = np.mean(encodings_i_np, axis = 0)
-                data_encodings.append(class_encoding)
-                data_labels.append(class_i)
-        self.encoded_training_data['paths'] = data_paths
-        self.encoded_training_data['labels'] = data_labels
-        self.encoded_training_data['encodings'] = np.squeeze(
-            np.array(data_encodings))
-        self.encoded_training_data['knn_classifier'] = KNeighborsClassifier(
-            n_neighbors=k_val)
-        self.encoded_training_data['knn_classifier'].fit(self.encoded_training_data['encodings'],
-                                                         self.encoded_training_data['labels'])
-        with open(save_file_name, "wb") as f:
-            pickle.dump(self.encoded_training_data, f)
+                data_encodings.append(encod)
 
-    def load_encodings(self, path_to_encodings):
-        self.encoded_training_data = load_encodings(path_to_encodings)
+        encoded_training_data['paths'] = data_paths
+        encoded_training_data['labels'] = data_labels
+        encoded_training_data['encodings'] = np.squeeze(np.array(data_encodings))
+        
+        return encoded_training_data
+
+    def save_encodings(self, encoded_training_data,
+                             save_file_name='encodings.pkl'):
+        with open(save_file_name, "wb") as f:
+            pickle.dump(encoded_training_data, f)
 
     def load_model(self, file_path):
         from keras_radam import RAdam
@@ -207,17 +189,13 @@ class EmbeddingNet:
                                 outputs=[self.model.layers[3].layers[-1].output])
         self.base_model._make_predict_function()
 
-    def calculate_distances(self, encoding):
-        training_encodings = self.encoded_training_data['encodings']
-        return np.sqrt(
-            np.sum((training_encodings - np.array(encoding))**2, axis=1))
-
     def predict(self, image):
         if type(image) is str:
             img = cv2.imread(image)
         else:
             img = image
-        img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
+        img = cv2.resize(img, (self.params_model['input_shape'][0], 
+                               self.params_model['input_shape'][1]))
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         distances = self.calculate_distances(encoding)
         max_element = np.argmin(distances)
