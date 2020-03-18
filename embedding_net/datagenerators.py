@@ -7,6 +7,9 @@ from itertools import combinations
 from sklearn.metrics import pairwise_distances
 from tensorflow.keras.utils import Sequence
 from sklearn.model_selection import train_test_split
+from .utils import get_image
+from tensorflow.keras import backend as K
+import tensorflow as tf
 
 class ENDataLoader():
     def __init__(self, dataset_path,
@@ -40,6 +43,8 @@ class ENDataLoader():
     def split_train_val(self, val_ratio):
         train_data = {}
         val_data = {}
+        print(len(self.class_files_paths['real']))
+        print(len(self.class_files_paths['fake']))
         for k, v in self.class_files_paths.items():
             train_d, val_d = train_test_split(v, test_size=val_ratio, random_state=42)
             train_data[k] = train_d
@@ -57,13 +62,26 @@ class ENDataLoader():
     def _load_from_directory(self):
         self.class_names = [f.name for f in os.scandir(self.dataset_path) if f.is_dir()]
         class_dir_paths = [f.path for f in os.scandir(self.dataset_path) if f.is_dir()]
-
+        
         for class_name, class_dir_path in zip(self.class_names, class_dir_paths):
-            class_image_paths = [f.path for f in os.scandir(class_dir_path) if f.is_file() and
-                                (f.name.endswith('.jpg') or
-                                 f.name.endswith('.png') and 
-                                 not f.name.startswith('._'))]
-            self.class_files_paths[class_name] = class_image_paths    
+            subdirs = [f.path for f in os.scandir(class_dir_path) if f.is_dir()]
+            self.class_files_paths[class_name] = []
+            print(class_dir_path)
+            if len(subdirs)>0:
+                for subdir in subdirs:
+                    class_image_paths = [f.path for f in os.scandir(subdir) if f.is_file() and
+                                        (f.name.endswith('.jpg') or
+                                        f.name.endswith('.png') and 
+                                        not f.name.startswith('._'))]
+                    for class_image_path in class_image_paths:
+                        self.class_files_paths[class_name].append(class_image_path)
+            else:  
+                class_image_paths = [f.path for f in os.scandir(class_dir_path) if f.is_file() and
+                                        (f.name.endswith('.jpg') or
+                                        f.name.endswith('.png') and 
+                                        not f.name.startswith('._'))]
+                for class_image_path in class_image_paths:
+                        self.class_files_paths[class_name].append(class_image_path)  
 
 
 class ENDataGenerator(Sequence):
@@ -89,16 +107,6 @@ class ENDataGenerator(Sequence):
 
     def __getitem__(self, index):
         pass       
-    
-    def get_image(self, img_path):
-        img = cv2.imread(img_path)
-        if img is None:
-            print('image is not exist ' + img_path)
-            return None
-        if self.input_shape:
-            img = cv2.resize(
-                img, (self.input_shape[0], self.input_shape[1]))
-        return img
 
     def _get_images_set(self, clsss, idxs, with_aug=True):
         if type(clsss) is list:
@@ -106,11 +114,7 @@ class ENDataGenerator(Sequence):
         else:
             img_paths = [self.class_files_paths[clsss][idx] for idx in idxs]
 
-        imgs = [cv2.imread(img_path) for img_path in img_paths]
-
-        if self.input_shape:
-            imgs = [cv2.resize(
-                img, (self.input_shape[0], self.input_shape[1])) for img in imgs]
+        imgs = [get_image(img_path, self.input_shape) for img_path in img_paths]
 
         if with_aug:
             imgs = [self.augmentations(image=img)['image'] for img in imgs]
@@ -141,10 +145,13 @@ class TripletsDataGenerator(ENDataGenerator):
                  'hardest': self.hardest_negative,
                  'random_hard': self.random_hard_negative}
         self.embedding_model = embedding_model
+
         self.k_classes = k_classes
         self.k_samples = k_samples
         self.margin = margin
         self.negative_selection_fn = modes[negatives_selection_mode]
+        self.session = K.get_session()
+        self.graph = tf.get_default_graph()
 
     def hardest_negative(self, loss_values, margin=0.5):
         hard_negative = np.argmax(loss_values)
@@ -169,11 +176,15 @@ class TripletsDataGenerator(ENDataGenerator):
         all_embeddings_list = []
         all_images_list = []
 
+        
         for idx, cl_img_idxs in enumerate(selected_images):
             images = self._get_images_set(selected_classes[idx], cl_img_idxs, with_aug=self.augmentations)
             all_images_list.append(images)
-            embeddings = self.embedding_model.predict(images)
+            with self.session.as_default():
+                with self.graph.as_default():
+                    embeddings = self.embedding_model.predict(images)
             all_embeddings_list.append(embeddings)
+
         all_embeddings = np.vstack(all_embeddings_list)
         all_images = np.vstack(all_images_list)
         distance_matrix = pairwise_distances(all_embeddings)

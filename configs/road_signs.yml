@@ -1,0 +1,59 @@
+MODEL:
+  input_shape :  [48, 48, 3]
+  encodings_len: 256
+  mode : 'triplet'
+  distance_type : 'l1'
+  backbone_name : 'efficientnet-b0'
+  backbone_weights : 'imagenet'
+  freeze_backbone : False
+  embeddings_normalization: True
+
+DATALOADER:
+  dataset_path : '/home/rauf/datasets/road_signs/road_signs_separated/train/'
+  validate : True
+  val_ratio : 0.2
+  
+GENERATOR:
+  negatives_selection_mode : 'semihard'
+  k_classes: 2
+  k_samples: 3
+  margin: 0.5
+  batch_size : 1
+  n_batches : 1
+  augmentations : 'none'
+
+TRAIN:
+  # optimizer parameters
+  optimizer : 'adam'
+  learning_rate : 0.0001
+  decay_factor : 0.99
+  step_size : 1
+
+  # embeddings learning training parameters
+  n_epochs : 1000
+  
+  # plot training history
+  plot_history : True
+
+SOFTMAX_PRETRAINING:
+  # softmax pretraining parameters
+  optimizer : 'radam'
+  learning_rate : 0.0001
+  decay_factor : 0.99
+  step_size : 1
+
+  batch_size : 8
+  val_steps : 200
+  steps_per_epoch : 10
+  n_epochs : 1
+
+SAVE_PATHS:
+  project_name : 'road_signs_efficientnet'
+  work_dir : 'work_dirs/'
+
+ENCODINGS:
+  # encodings parameters
+  save_encodings : True
+  centers_only: False
+  max_num_samples_of_each_class : 30
+  knn_k : 1

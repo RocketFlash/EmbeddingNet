@@ -10,6 +10,22 @@ from tensorflow.keras import optimizers
 from .augmentations import get_aug
 
 
+def get_image(img_path, input_shape=None):
+    img = cv2.imread(img_path)
+    if img is None:
+        print('image is not exist ' + img_path)
+        return None
+    if input_shape:
+        img = cv2.resize(
+            img, (input_shape[0], input_shape[1]))
+    return img
+
+def get_images(img_paths, input_shape=None):
+    imgs = [get_image(img_path, input_shape) for img_path in img_paths]
+    return np.array(imgs)
+
+
+
 def load_encodings(path_to_encodings):
 
     with open(path_to_encodings, 'rb') as f:
@@ -42,9 +58,10 @@ def plot_tsne(encodings_path, save_plot_dir, show=True):
     fig.savefig("{}{}.png".format(save_plot_dir, 'tsne.png'))
 
 
-def plot_tsne_interactive(encodings_path):
+def plot_tsne_interactive(encodings):
     import plotly.graph_objects as go
-    encodings = load_encodings(encodings_path)
+    if type(encodings) is str:
+        encodings = load_encodings(encodings)
     labels = list(set(encodings['labels']))
     tsne = TSNE()
     tsne_train = tsne.fit_transform(encodings['encodings'])
@@ -60,8 +77,8 @@ def plot_tsne_interactive(encodings_path):
                                  mode='markers',
                                  marker=dict(color=color,
                                              size=10),
-                                 text=l,
-                                 name=l))
+                                 text=str(l),
+                                 name=str(l)))
     fig.update_layout(
         title=go.layout.Title(text="t-SNE plot",
                               xref="paper",

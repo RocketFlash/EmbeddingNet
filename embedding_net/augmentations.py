@@ -27,6 +27,10 @@ def get_aug(name='default', input_shape=[48, 48, 3]):
             A.GaussNoise(var_limit=(50, 80), p=0.3),
             A.RandomCrop(p=0.8, height=2*input_shape[1]/3, width=2*input_shape[0]/3)
         ], p=1)
+    elif name == 'deepfake':
+        augmentations = A.Compose([
+            A.HorizontalFlip(p=0.5),
+        ], p=1)
     elif name == 'plates2':
         augmentations = A.Compose([
             A.CLAHE(clip_limit=(1,4),p=0.3),

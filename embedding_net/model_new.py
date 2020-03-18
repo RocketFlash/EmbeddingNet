@@ -8,13 +8,11 @@ from tensorflow.keras import optimizers
 from tensorflow.keras.layers import Dense, Input, Lambda, concatenate, GlobalAveragePooling2D
 import pickle
 from .utils import load_encodings, parse_params
-from .datagenerators import ENDataLoader, SimpleDataGenerator, TripletsDataGenerator, SimpleTripletsDataGenerator, SiameseDataGenerator
 from .backbones import get_backbone
 from . import losses_and_accuracies as lac
+from .utils import get_image, get_images
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
-from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
 class EmbeddingNet:
 
@@ -31,140 +29,42 @@ class EmbeddingNet:
         self.backbone_model = None
 
         self.encoded_training_data = {}
-        self.dataloader = None
-        self.train_generator = None
-        self.val_generator = None
-
-    def pretrain_backbone_softmax(self):
-
-        optimizer = self.params_softmax['optimizer']
-        learning_rate = self.params_softmax['learning_rate']
-        decay_factor = self.params_softmax['decay_factor']
-        step_size = self.params_softmax['step_size']
-
-        input_shape = self.params_softmax['input_shape']
-        batch_size = self.params_softmax['batch_size']
-        val_steps = self.params_softmax['val_steps']
-        steps_per_epoch = self.params_softmax['steps_per_epoch']
-        n_epochs = self.params_softmax['n_epochs']
-        augmentations = self.params_softmax['augmentations']
-
-        n_classes = self.data_loader.n_classes
-
-        x = GlobalAveragePooling2D()(self.backbone_model.output)
-
-        output = Dense(n_classes, activation='softmax')(x)
-        model = Model(inputs=[self.backbone_model.input], outputs=[output])
-
-        # train
-        model.compile(optimizer=optimizer,
-                      loss='categorical_crossentropy', 
-                      metrics=['accuracy'])
-
-        train_generator = SimpleDataGenerator(self.data_loader.train_data,
-                                              self.data_loader.class_names,
-                                              input_shape=input_shape,
-                                              batch_size = batch_size,
-                                              n_batches = steps_per_epoch, 
-                                              augmentations=augmentations)
-
-        if self.data_loader.validate:
-            val_generator = SimpleDataGenerator(self.data_loader.val_data,
-                                              self.data_loader.class_names,
-                                              input_shape=input_shape,
-                                              batch_size = batch_size,
-                                              n_batches = steps_per_epoch, 
-                                              augmentations=augmentations)
-            checkpoint_callback_monitor = 'val_loss'
-        else:
-            val_generator = None
-            checkpoint_callback_monitor = 'loss'
-
-        tensorboard_save_path = os.path.join(
-            self.params_save_paths['work_dir'],
-            self.params_save_paths['project_name'], 
-            'pretraining_model/tf_log/')
-        weights_save_file = os.path.join(
-            self.params_save_paths['work_dir'],
-            self.params_save_paths['project_name'], 
-            'pretraining_model/weights/',
-            self.params_save_paths['project_name']+'.h5')
-
-        callbacks = [
-            LearningRateScheduler(lambda x: learning_rate *
-                                decay_factor ** np.floor(x/step_size)),
-            ReduceLROnPlateau(monitor=checkpoint_callback_monitor, factor=0.1,
-                            patience=20, verbose=1),
-            EarlyStopping(monitor=checkpoint_callback_monitor,
-                          patience=10, 
-                          verbose=1, 
-                          restore_best_weights=True),
-            TensorBoard(log_dir=tensorboard_save_path),
-            ModelCheckpoint(filepath=weights_save_file,
-                            verbose=1, 
-                            monitor=checkpoint_callback_monitor, 
-                            save_best_only=True)]
-
-        history = model.fit_generator(train_generator,
-                                    steps_per_epoch=steps_per_epoch,
-                                    epochs=n_epochs,
-                                    verbose=1,
-                                    validation_data=val_generator,
-                                    validation_steps=val_steps,
-                                    callbacks=callbacks)
 
     def _create_base_model(self):
         self.base_model, self.backbone_model = get_backbone(**self.params_model)
-
-    def _create_dataloader(self):
-        self.data_loader = ENDataLoader(**self.params_dataloader)
-
-    def _create_generators(self):
-        pass
     
-    def _generate_encoding(self, img_path):
-        img = self.data_loader.get_image(img_path)
-        if img is None:
-            return None
-        encoding = self.base_model.predict(np.expand_dims(img, axis=0))
-        return encoding
+    def _generate_encodings(self, imgs):
+        encodings = self.base_model.predict(imgs)
+        return encodings
         
-    def train(self, callbacks=[], verbose=1):
-        history = self.model.fit_generator(self.train_generator,
-                                           validation_data=self.val_generator,  
-                                           epochs=self.params_train['n_epochs'], 
-                                           callbacks=callbacks,
-                                           verbose=verbose,
-                                           use_multiprocessing=True)
 
-        return history
-
-    def train_embeddings_classifier(self, 
+    def train_embeddings_classifier(self, data_loader,
                                     classification_model,
                                     max_n_samples=10,
                                     shuffle=True):
-        encodings = self.generate_encodings(max_n_samples=max_n_samples,  
+        encodings = self.generate_encodings(data_loader, max_n_samples=max_n_samples,  
                                 shuffle=shuffle)
         classification_model.fit(encodings['encodings'], 
                                  encodings['labels'])
 
-    def generate_encodings(self, max_n_samples=10,  
+    def generate_encodings(self, data_loader, max_n_samples=10,  
                                  shuffle=True):
         data_paths, data_labels, data_encodings = [], [], []
         encoded_training_data = {}
 
-        for class_name in self.data_loader.class_names:
-            data_list = self.data_loader.train_data[class_name]
+        for class_name in data_loader.class_names:
+            data_list = data_loader.train_data[class_name]
             if len(data_list)>max_n_samples:
                 if shuffle:
                     random.shuffle(data_list)
                 data_list = data_list[:max_n_samples]
             
             data_paths += data_list
-            data_labels += class_name * len(data_list)
-            for img_path in data_list:
-                encod = self._generate_encoding(img_path)
+            imgs = get_images(data_list)
+            encods = self._generate_encodings(imgs)
+            for encod in encods:
                 data_encodings.append(encod)
+                data_labels.append(class_name)
 
         encoded_training_data['paths'] = data_paths
         encoded_training_data['labels'] = data_labels
@@ -182,7 +82,7 @@ class EmbeddingNet:
         self.model = load_model(file_path,
                                 custom_objects={'contrastive_loss': lac.contrastive_loss,
                                                 'accuracy': lac.accuracy,
-                                                'loss_function': lac.triplet_loss(self.margin),
+                                                'loss_function': lac.triplet_loss(self.params_generator['margin']),
                                                 'RAdam': RAdam})
         self.input_shape = list(self.model.inputs[0].shape[1:])
         self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)],
@@ -218,15 +118,15 @@ class EmbeddingNet:
         else:
             return predicted_label
 
-    def calculate_prediction_accuracy(self):
+    def calculate_prediction_accuracy(self, data_loader):
         correct_top1 = 0
         correct_top5 = 0
 
         accuracies = {'top1':0,
                       'top5':0 }
-        total_n_of_images = len(self.data_loader.images_paths['val'])
-        for img_path, img_label in zip(self.data_loader.images_paths['val'],
-                                       self.data_loader.images_labels['val']):
+        total_n_of_images = len(data_loader.images_paths['val'])
+        for img_path, img_label in zip(data_loader.images_paths['val'],
+                                       data_loader.images_labels['val']):
             prediction, prediction_top5 = self.predict_knn(img_path, with_top5=True)
             if prediction[0] == img_label:
                 correct_top1 += 1
@@ -243,24 +143,12 @@ class TripletNet(EmbeddingNet):
     def __init__(self, params, training=False):
         super().__init__(params)
         self._create_base_model()
-        self.base_model._make_predict_function()
 
         self.training = training
 
         if self.training:
-            self._create_dataloader()
-            self._create_generators()
             self._create_model_triplet()
 
-    def _create_generators(self):
-        self.train_generator = TripletsDataGenerator(embedding_model=self.base_model,
-                                               class_files_paths=self.data_loader.train_data,
-                                               class_names=self.data_loader.class_names,
-                                               **self.params_generator)
-        if self.data_loader.validate:
-            self.val_generator = SimpleTripletsDataGenerator(self.data_loader.val_data,
-                                               self.data_loader.class_names,
-                                               **self.params_generator)
     
     def _create_model_triplet(self):
         input_image_a = Input(self.params_model['input_shape'])
@@ -291,20 +179,6 @@ class SiameseNet(EmbeddingNet):
     def __init__(self, params, training):
         super().__init__(params)
         self._create_model_siamese()
-        if training:
-            self.dataloader = {}
-            self.train_generator = {}
-            self.val_generator = {}
-            self._create_generators()
-
-    def _create_generators(self):
-        self.train_generator = SiameseDataGenerator(class_files_paths=self.data_loader.train_data,
-                                               class_names=self.data_loader.class_names,
-                                               **self.params_generator)
-        if self.data_loader.validate:
-            self.val_generator = SiameseDataGenerator(class_files_paths=self.data_loader.val_data,
-                                               class_names=self.data_loader.class_names,
-                                               **self.params_generator)
 
     def _create_model_siamese(self):
 

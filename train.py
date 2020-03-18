@@ -3,8 +3,12 @@ import numpy as np
 from embedding_net.model_new import EmbeddingNet, TripletNet
 from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from embedding_net.datagenerators import ENDataLoader, SimpleDataGenerator, TripletsDataGenerator, SimpleTripletsDataGenerator, SiameseDataGenerator
 from embedding_net.utils import parse_params, plot_grapths
+from embedding_net.backbones import pretrain_backbone_softmax
 import argparse
+from tensorflow import keras
+import tensorflow as tf
 
 
 def parse_args():
@@ -25,7 +29,7 @@ def create_save_folders(params):
     plots_save_path = os.path.join(work_dir_path, 'plots/')
     tensorboard_save_path = os.path.join(work_dir_path, 'tf_log/')
     tensorboard_pretrained_save_path = os.path.join(work_dir_path, 'pretraining_model/tf_log/')
-    weights_save_file_path = os.path.join(weights_save_path, 'best_' + params['project_name'] + '.h5')
+    weights_save_file_path = os.path.join(weights_save_path, 'best_' + params['project_name']+'_{epoch:03d}_{loss:03f}' + '.h5')
 
     os.makedirs(work_dir_path , exist_ok=True)
     os.makedirs(weights_save_path, exist_ok=True)
@@ -37,21 +41,33 @@ def create_save_folders(params):
     return tensorboard_save_path, weights_save_file_path, plots_save_path
 
 def main():
+    config = tf.ConfigProto(
+        device_count={'GPU': 1},
+        intra_op_parallelism_threads=1,
+        allow_soft_placement=True
+    )
+
+    config.gpu_options.allow_growth = True
+    # config.gpu_options.per_process_gpu_memory_fraction = 1
+
+    session = tf.Session(config=config)
+
+    keras.backend.set_session(session)
+
     args = parse_args()
     cfg_params = parse_params(args.config)
     params_train = cfg_params['train']
     params_dataloader = cfg_params['dataloader']
+    params_generator = cfg_params['generator']
 
     tensorboard_save_path, weights_save_file_path, plots_save_path = create_save_folders(cfg_params['save_paths'])
 
-    model = TripletNet(cfg_params, training=True)
 
-    if 'softmax' in cfg_params:
-        model.pretrain_backbone_softmax()
+    cfg_params['save_paths']
+    work_dir_path = os.path.join(cfg_params['save_paths']['work_dir'],
+                                 cfg_params['save_paths']['project_name'])
+    weights_save_path = os.path.join(work_dir_path, 'weights/')
     
-    if args.resume_from is not None:
-        model.load_model(args.resume_from)
-
 
     initial_lr = params_train['learning_rate']
     decay_factor = params_train['decay_factor']
@@ -70,28 +86,68 @@ def main():
         EarlyStopping(monitor=callback_monitor,
                       patience=10, 
                       verbose=1),
-        TensorBoard(log_dir=tensorboard_save_path),
+        # TensorBoard(log_dir=tensorboard_save_path),
         ModelCheckpoint(filepath=weights_save_file_path,
-                        verbose=1, monitor=callback_monitor, save_best_only=True)
+                        monitor=callback_monitor, 
+                        save_best_only=True,
+                        verbose=1)
     ]
 
-    history = model.train(callbacks=callbacks)
+    data_loader = ENDataLoader(**params_dataloader)
+    model = TripletNet(cfg_params, training=True)
+    if args.resume_from is not None:
+        model.load_model(args.resume_from)
+        
+    model.load_model('work_dirs/deepfake_efn_b3/weights/best_deepfake_efn_b3_001_0.430115.h5')
+
+    if 'softmax' in cfg_params:
+        params_softmax = cfg_params['softmax']
+        params_save_paths = cfg_params['save_paths']
+        pretrain_backbone_softmax(model.backbone_model, 
+                                  data_loader, 
+                                  params_softmax,  
+                                  params_save_paths)
+
+     # def _create_generators(self):
+    #     self.train_generator = SiameseDataGenerator(class_files_paths=self.data_loader.train_data,
+    #                                            class_names=self.data_loader.class_names,
+    #                                            **self.params_generator)
+    #     if self.data_loader.validate:
+    #         self.val_generator = SiameseDataGenerator(class_files_paths=self.data_loader.val_data,
+    #                                            class_names=self.data_loader.class_names,
+    #                                            **self.params_generator)
+
+    # train_generator = SimpleTripletsDataGenerator(class_files_paths=data_loader.train_data,
+    #                                         class_names=data_loader.class_names,
+    #                                         **params_generator)
+    # checkpoints_load_name = 'work_dirs/bengali_efn_b5/pretraining_model/weights/best_efficientnet-b5.hdf5'
+    # model.base_model.load_weights(checkpoints_load_name, by_name=True)
+    train_generator = TripletsDataGenerator(embedding_model=model.base_model,
+                                            class_files_paths=data_loader.train_data,
+                                            class_names=data_loader.class_names,
+                                            **params_generator)
+    
+
+    if data_loader.validate:
+        val_generator = SimpleTripletsDataGenerator(data_loader.val_data,
+                                               data_loader.class_names,
+                                               **params_generator)
+    else:
+        val_generator = None
+
+    history = model.model.fit_generator(train_generator,
+                                           validation_data=val_generator,  
+                                           epochs=params_train['n_epochs'], 
+                                           callbacks=callbacks,
+                                           verbose=1,
+                                           use_multiprocessing=False)
+
+    # encoded_training_data = model.generate_encodings(data_loader,
+                        #  max_n_samples=50000000000000000, shuffle=False)
+    # model.save_encodings(encoded_training_data)
 
     if params_train['plot_history']:
         plot_grapths(history, plots_save_path)
-
-    # if cfg_params['save_encodings']:
-    #     encodings_save_file = os.path.join(
-    #         encodings_save_path, cfg_params['encodings_save_name'])
-    #     model.generate_encodings(save_file_name=encodings_save_file,
-    #                              max_num_samples_of_each_class=cfg_params['max_num_samples_of_each_class'],
-    #                              knn_k=cfg_params['knn_k'],
-    #                              shuffle=True)
-    #     if cfg_params['to_validate']:
-    #         model_accuracies = model.calculate_prediction_accuracy()
-    #         print('Model top1 accuracy on validation set: {}'.format(model_accuracies['top1']))
-    #         print('Model top5 accuracy on validation set: {}'.format(model_accuracies['top5']))
-
 
 if __name__ == '__main__':
     main()

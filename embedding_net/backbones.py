@@ -3,7 +3,11 @@ from tensorflow.keras.layers import Conv2D, MaxPool2D, BatchNormalization, conca
 from tensorflow.keras.models import Model
 from tensorflow.keras.regularizers import l2
 import tensorflow.keras.backend as K
-
+from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from .datagenerators import SimpleDataGenerator
+import os
+import numpy as np
 
 def get_backbone(input_shape,
                  encodings_len=4096,
@@ -117,4 +121,86 @@ def get_backbone(input_shape,
         base_model = Model(
             inputs=[backbone_model.input], outputs=[encoded_output])
 
+        base_model._make_predict_function()
+
     return base_model, backbone_model
+
+
+def pretrain_backbone_softmax(backbone_model, data_loader, params_softmax,  params_save_paths):
+
+    optimizer = params_softmax['optimizer']
+    learning_rate = params_softmax['learning_rate']
+    decay_factor = params_softmax['decay_factor']
+    step_size = params_softmax['step_size']
+
+    input_shape = params_softmax['input_shape']
+    batch_size = params_softmax['batch_size']
+    val_steps = params_softmax['val_steps']
+    steps_per_epoch = params_softmax['steps_per_epoch']
+    n_epochs = params_softmax['n_epochs']
+    augmentations = params_softmax['augmentations']
+
+    n_classes = data_loader.n_classes
+
+    x = GlobalAveragePooling2D()(backbone_model.output)
+
+    output = Dense(n_classes, activation='softmax')(x)
+    model = Model(inputs=[backbone_model.input], outputs=[output])
+
+    # train
+    model.compile(optimizer=optimizer,
+                    loss='categorical_crossentropy', 
+                    metrics=['accuracy'])
+
+    train_generator = SimpleDataGenerator(data_loader.train_data,
+                                            data_loader.class_names,
+                                            input_shape=input_shape,
+                                            batch_size = batch_size,
+                                            n_batches = steps_per_epoch, 
+                                            augmentations=augmentations)
+
+    if data_loader.validate:
+        val_generator = SimpleDataGenerator(data_loader.val_data,
+                                            data_loader.class_names,
+                                            input_shape=input_shape,
+                                            batch_size = batch_size,
+                                            n_batches = steps_per_epoch, 
+                                            augmentations=augmentations)
+        checkpoint_callback_monitor = 'val_loss'
+    else:
+        val_generator = None
+        checkpoint_callback_monitor = 'loss'
+
+    tensorboard_save_path = os.path.join(
+        params_save_paths['work_dir'],
+        params_save_paths['project_name'], 
+        'pretraining_model/tf_log/')
+    weights_save_file = os.path.join(
+        params_save_paths['work_dir'],
+        params_save_paths['project_name'], 
+        'pretraining_model/weights/',
+        params_save_paths['project_name']+'_{epoch:03d}_{val_acc:03f}' +'.h5')
+
+    callbacks = [
+        LearningRateScheduler(lambda x: learning_rate *
+                            decay_factor ** np.floor(x/step_size)),
+        ReduceLROnPlateau(monitor=checkpoint_callback_monitor, factor=0.1,
+                        patience=20, verbose=1),
+        EarlyStopping(monitor=checkpoint_callback_monitor,
+                        patience=10, 
+                        verbose=1, 
+                        restore_best_weights=True),
+        # TensorBoard(log_dir=tensorboard_save_path),
+        ModelCheckpoint(filepath=weights_save_file,
+                        verbose=1, 
+                        monitor=checkpoint_callback_monitor, 
+                        save_best_only=True)]
+    # checkpoints_load_name = 'work_dirs/bengali_efficientnet/pretraining_model/weights/bengali_efficientnet_020_0.932969.h5'
+    # model.load_weights(checkpoints_load_name, by_name=True)
+    history = model.fit_generator(train_generator,
+                                steps_per_epoch=steps_per_epoch,
+                                epochs=n_epochs,
+                                verbose=1,
+                                validation_data=val_generator,
+                                validation_steps=val_steps,
+                                callbacks=callbacks)
