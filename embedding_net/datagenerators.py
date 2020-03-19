@@ -57,15 +57,16 @@ class ENDataLoader():
         for class_name in self.class_names:
             image_names = dataframe.loc[dataframe[label_column] == class_name][image_id_column]
             image_paths = [os.path.join(self.dataset_path, f) for f in image_names]
-            self.class_files_paths[class_name] = image_paths       
+            self.class_files_paths[class_name] = image_paths      
 
     def _load_from_directory(self):
         self.class_names = [f.name for f in os.scandir(self.dataset_path) if f.is_dir()]
         class_dir_paths = [f.path for f in os.scandir(self.dataset_path) if f.is_dir()]
-        
+
         for class_name, class_dir_path in zip(self.class_names, class_dir_paths):
             subdirs = [f.path for f in os.scandir(class_dir_path) if f.is_dir()]
-            self.class_files_paths[class_name] = []
+            # self.class_files_paths[class_name] = []
+            temp_list = []
             print(class_dir_path)
             if len(subdirs)>0:
                 for subdir in subdirs:
@@ -73,29 +74,32 @@ class ENDataLoader():
                                         (f.name.endswith('.jpg') or
                                         f.name.endswith('.png') and 
                                         not f.name.startswith('._'))]
-                    for class_image_path in class_image_paths:
-                        self.class_files_paths[class_name].append(class_image_path)
+                    temp_list.extend(class_image_paths)
             else:  
                 class_image_paths = [f.path for f in os.scandir(class_dir_path) if f.is_file() and
                                         (f.name.endswith('.jpg') or
                                         f.name.endswith('.png') and 
                                         not f.name.startswith('._'))]
-                for class_image_path in class_image_paths:
-                        self.class_files_paths[class_name].append(class_image_path)  
+                temp_list.extend(class_image_paths)
+            self.class_files_paths[class_name] = temp_list 
 
 
 class ENDataGenerator(Sequence):
     def __init__(self, class_files_paths,
                        class_names,
+                       val_gen = False,
                        input_shape=None,
                        batch_size = 32,
                        n_batches = 10, 
+                       n_batches_val = 10,
                        augmentations=None):
         
         self.input_shape = input_shape
         self.augmentations = augmentations
         self.batch_size = batch_size
         self.n_batches = n_batches
+        self.n_batches_val = n_batches_val
+        self.val_gen = val_gen
         self.class_files_paths = class_files_paths
         self.class_names = class_names
         
@@ -103,7 +107,10 @@ class ENDataGenerator(Sequence):
         self.n_samples = {k: len(v) for k, v in self.class_files_paths.items()}
 
     def __len__(self):
-        return self.n_batches
+        if self.val_gen:
+            return self.n_batches_val
+        else:
+            return self.n_batches
 
     def __getitem__(self, index):
         pass       
@@ -119,7 +126,7 @@ class ENDataGenerator(Sequence):
         if with_aug:
             imgs = [self.augmentations(image=img)['image'] for img in imgs]
 
-        return np.array(imgs)
+        return np.array(imgs)/255.
 
 
 class TripletsDataGenerator(ENDataGenerator):
@@ -289,60 +296,75 @@ class SiameseDataGenerator(ENDataGenerator):
 
     def __init__(self, class_files_paths,
                        class_names,
+                       val_gen = False,
                        input_shape=None,
                        batch_size = 32,
-                       n_batches = 10, 
+                       n_batches = 10,
+                       n_batches_val = 10, 
                        augmentations=None):
 
         super().__init__(class_files_paths=class_files_paths, 
-                         class_names=class_names, 
+                         class_names=class_names,
+                         val_gen = False, 
                          input_shape=input_shape, 
                          batch_size=batch_size, 
-                         n_batches=n_batches, 
+                         n_batches=n_batches,
+                         n_batches_val = 10, 
                          augmentations=augmentations)
 
     def get_batch_pairs(self):
         pairs = [np.zeros((self.batch_size, self.input_shape[0], self.input_shape[1], 3)), np.zeros(
             (self.batch_size, self.input_shape[0], self.input_shape[1], 3))]
-        targets = np.zeros((self.batch_size,))
+        targets = np.zeros((self.batch_size, ))
+        targets1 = np.zeros((self.batch_size, ))
+        targets2 = np.zeros((self.batch_size, ))
+        # targets = []
 
         n_same_class = self.batch_size // 2
 
         selected_class_idx = random.randrange(0, self.n_classes)
         selected_class = self.class_names[selected_class_idx]
-        selected_class_n_elements = len(self.indexes[selected_class])
+        selected_class_n_elements = self.n_samples[selected_class] 
 
-        indxs = np.random.randint(
-            selected_class_n_elements, size=self.batch_size)
+        if selected_class == 'real':
+            t_id = 0
+            f_id = 1
+        else:
+            t_id = 1
+            f_id = 0
+        indxs = np.random.randint(selected_class_n_elements, size=self.batch_size)
 
         with_aug = self.augmentations
         count = 0
         for i in range(n_same_class):
             idx1 = indxs[i]
-            idx2 = (idx1 + random.randrange(1, selected_class_n_elements)
-                    ) % selected_class_n_elements
-            imgs = self._get_images_set(
-                [selected_class, selected_class], [idx1, idx2], with_aug=with_aug)
+            idx2 = (idx1 + random.randrange(1, selected_class_n_elements)) % selected_class_n_elements
+            imgs = self._get_images_set([selected_class, selected_class], [idx1, idx2], with_aug=with_aug)
             pairs[0][count, :, :, :] = imgs[0]
             pairs[1][count, :, :, :] = imgs[1]
             targets[i] = 1
+            targets1[i] = t_id
+            targets2[i] = t_id
             count += 1
 
         for i in range(n_same_class, self.batch_size):
-            another_class_idx = (
-                selected_class_idx + random.randrange(1, self.n_classes)) % self.n_classes
+            another_class_idx = (selected_class_idx + random.randrange(1, self.n_classes)) % self.n_classes
             another_class = self.class_names[another_class_idx]
-            another_class_n_elements = len(self.indexes[another_class])
+            another_class_n_elements = self.n_samples[another_class]
             idx1 = indxs[i]
             idx2 = random.randrange(0, another_class_n_elements)
-            imgs = self._get_images_set(
-                [selected_class, another_class], [idx1, idx2], with_aug=with_aug)
+            imgs = self._get_images_set([selected_class, another_class], [idx1, idx2], with_aug=with_aug)
             pairs[0][count, :, :, :] = imgs[0]
             pairs[1][count, :, :, :] = imgs[1]
             targets[i] = 0
+            targets1[i] = t_id
+            targets2[i] = f_id
             count += 1
-
-        return pairs, targets
+        return pairs, {'output_siamese' : targets, 
+                       'output_im1' : targets1, 
+                       'output_im2' : targets2}
+                        # 'model_1' : targets1,
+                        # 'model_1_1' : targets2})
 
     def __getitem__(self, index):
         return self.get_batch_pairs()

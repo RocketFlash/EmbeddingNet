@@ -1,14 +1,16 @@
 import os
 import numpy as np
-from embedding_net.model_new import EmbeddingNet, TripletNet
+from embedding_net.model_new import EmbeddingNet, TripletNet, SiameseNet
 from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from embedding_net.datagenerators import ENDataLoader, SimpleDataGenerator, TripletsDataGenerator, SimpleTripletsDataGenerator, SiameseDataGenerator
 from embedding_net.utils import parse_params, plot_grapths
 from embedding_net.backbones import pretrain_backbone_softmax
+from embedding_net.losses_and_accuracies import contrastive_loss, triplet_loss, accuracy
 import argparse
 from tensorflow import keras
 import tensorflow as tf
+from tensorflow.compat.v1.keras.backend import set_session
 
 
 def parse_args():
@@ -29,7 +31,7 @@ def create_save_folders(params):
     plots_save_path = os.path.join(work_dir_path, 'plots/')
     tensorboard_save_path = os.path.join(work_dir_path, 'tf_log/')
     tensorboard_pretrained_save_path = os.path.join(work_dir_path, 'pretraining_model/tf_log/')
-    weights_save_file_path = os.path.join(weights_save_path, 'best_' + params['project_name']+'_{epoch:03d}_{loss:03f}' + '.h5')
+    weights_save_file_path = os.path.join(weights_save_path, 'best_' + params['project_name']+'_{epoch:03d}_{loss:03f}' + '.hdf5')
 
     os.makedirs(work_dir_path , exist_ok=True)
     os.makedirs(weights_save_path, exist_ok=True)
@@ -52,11 +54,13 @@ def main():
 
     session = tf.Session(config=config)
 
-    keras.backend.set_session(session)
+    set_session(session)
 
+    print('LOAD PARAMETERS')
     args = parse_args()
     cfg_params = parse_params(args.config)
     params_train = cfg_params['train']
+    params_model = cfg_params['model']
     params_dataloader = cfg_params['dataloader']
     params_generator = cfg_params['generator']
 
@@ -78,6 +82,8 @@ def main():
     else:
         callback_monitor = 'loss'
 
+    print('LOADING COMPLETED')
+
     callbacks = [
         LearningRateScheduler(lambda x: initial_lr *
                               decay_factor ** np.floor(x/step_size)),
@@ -93,13 +99,59 @@ def main():
                         verbose=1)
     ]
 
+    print('CREATE DATALOADER')
     data_loader = ENDataLoader(**params_dataloader)
-    model = TripletNet(cfg_params, training=True)
+    print('DATALOADER CREATED!')
+
+    val_generator = None
+
+    print('CREATE MODEL AND DATA GENETATORS')
+    if params_model['mode'] == 'siamese':
+        model = SiameseNet(cfg_params, training=True)
+        train_generator = SiameseDataGenerator(class_files_paths=data_loader.train_data,
+                                               class_names=data_loader.class_names,
+                                               **params_generator)
+        if data_loader.validate:
+            val_generator = SiameseDataGenerator(class_files_paths=data_loader.val_data,
+                                               class_names=data_loader.class_names,
+                                               val_gen = True,
+                                               **params_generator)
+        losses = {'output_siamese' : contrastive_loss, 
+                  'output_im1' : tf.keras.losses.binary_crossentropy, 
+                  'output_im2' : tf.keras.losses.binary_crossentropy}
+
+        metric = {'output_siamese' : accuracy, 
+                  'output_im1' : 'binary_accuracy', 
+                  'output_im2' : 'binary_accuracy'}
+        # metric = accuracy
+    else:
+        model = TripletNet(cfg_params, training=True)
+        train_generator = TripletsDataGenerator(embedding_model=model.base_model,
+                                            class_files_paths=data_loader.train_data,
+                                            class_names=data_loader.class_names,
+                                            **params_generator)
+
+        if data_loader.validate:
+            val_generator = SimpleTripletsDataGenerator(data_loader.val_data,
+                                                    data_loader.class_names,
+                                                    **params_generator)
+        losses = triplet_loss(params_generator['margin'])
+        metric = 'accuracy'
+    print('DONE')
+
+    print('COMPILE MODEL')
+    model.model.compile(loss=losses, 
+                        optimizer=params_train['optimizer'],
+                        loss_weights = {'output_siamese' : 1, 
+                                        'output_im1' : 1, 
+                                        'output_im2' : 1}, 
+                        metrics=metric)
+
     if args.resume_from is not None:
         model.load_model(args.resume_from)
         
-    model.load_model('work_dirs/deepfake_efn_b3/weights/best_deepfake_efn_b3_001_0.430115.h5')
-
+    # model.load_model('/home/rauf/Desktop/sg_efficientnet-b3__simple_fold_0_005_0.9810.hdf5')
+    model.base_model.load_weights('/home/rauf/Desktop/sg_efficientnet-b3__simple_fold_0_005_0.9810.hdf5', by_name=True)
     if 'softmax' in cfg_params:
         params_softmax = cfg_params['softmax']
         params_save_paths = cfg_params['save_paths']
@@ -107,33 +159,6 @@ def main():
                                   data_loader, 
                                   params_softmax,  
                                   params_save_paths)
-
-     # def _create_generators(self):
-    #     self.train_generator = SiameseDataGenerator(class_files_paths=self.data_loader.train_data,
-    #                                            class_names=self.data_loader.class_names,
-    #                                            **self.params_generator)
-    #     if self.data_loader.validate:
-    #         self.val_generator = SiameseDataGenerator(class_files_paths=self.data_loader.val_data,
-    #                                            class_names=self.data_loader.class_names,
-    #                                            **self.params_generator)
-
-    # train_generator = SimpleTripletsDataGenerator(class_files_paths=data_loader.train_data,
-    #                                         class_names=data_loader.class_names,
-    #                                         **params_generator)
-    # checkpoints_load_name = 'work_dirs/bengali_efn_b5/pretraining_model/weights/best_efficientnet-b5.hdf5'
-    # model.base_model.load_weights(checkpoints_load_name, by_name=True)
-    train_generator = TripletsDataGenerator(embedding_model=model.base_model,
-                                            class_files_paths=data_loader.train_data,
-                                            class_names=data_loader.class_names,
-                                            **params_generator)
-    
-
-    if data_loader.validate:
-        val_generator = SimpleTripletsDataGenerator(data_loader.val_data,
-                                               data_loader.class_names,
-                                               **params_generator)
-    else:
-        val_generator = None
 
     history = model.model.fit_generator(train_generator,
                                            validation_data=val_generator,  

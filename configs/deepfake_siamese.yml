@@ -1,8 +1,8 @@
 MODEL:
   input_shape :  [224, 224, 3]
   encodings_len: 256
-  mode : 'triplet'
-  distance_type : 'l2'
+  mode : 'siamese'
+  distance_type : 'l1'
   backbone_name : 'efficientnet-b3'
   backbone_weights : 'noisy-student'
   freeze_backbone : False
@@ -17,19 +17,16 @@ DATALOADER:
   val_ratio : 0.2
   
 GENERATOR:
-  negatives_selection_mode : 'hardest'
-  k_classes: 2
-  k_samples: 3
-  margin: 0.5
-  batch_size : 8
-  n_batches : 7000
+  batch_size : 5
+  n_batches : 5000
+  n_batches_val : 500
   augmentations : 'deepfake'
 
 TRAIN:
   # optimizer parameters
   optimizer : 'radam'
-  learning_rate : 0.000016
-  decay_factor : 0.99
+  learning_rate : 0.00016
+  decay_factor : 0.95
   step_size : 1
 
   # embeddings learning training parameters

@@ -27,11 +27,17 @@ class EmbeddingNet:
 
         self.base_model = None
         self.backbone_model = None
+        self.model = None
 
         self.encoded_training_data = {}
 
     def _create_base_model(self):
         self.base_model, self.backbone_model = get_backbone(**self.params_model)
+        
+        # input_image = Input(self.params_model['input_shape'])
+        # output_base = self.base_model(input_image)
+        output = Dense(units=1, activation='sigmoid', name='output_img')(self.base_model.layers[-1].output)
+        self.classification_model = Model(inputs=[self.base_model.layers[0].input],outputs=[output])
     
     def _generate_encodings(self, imgs):
         encodings = self.base_model.predict(imgs)
@@ -78,15 +84,21 @@ class EmbeddingNet:
             pickle.dump(encoded_training_data, f)
 
     def load_model(self, file_path):
-        from keras_radam import RAdam
-        self.model = load_model(file_path,
-                                custom_objects={'contrastive_loss': lac.contrastive_loss,
-                                                'accuracy': lac.accuracy,
-                                                'loss_function': lac.triplet_loss(self.params_generator['margin']),
-                                                'RAdam': RAdam})
+        import efficientnet.tfkeras as efn
+        # from keras_radam import RAdam
+        # self.model = load_model(file_path,
+        #                         custom_objects={'contrastive_loss': lac.contrastive_loss,
+        #                                         'accuracy': lac.accuracy,
+        #                                         'loss_function': lac.triplet_loss(self.params_generator['margin']),
+        #                                         'RAdam': RAdam})
+        self.model = load_model(file_path, compile=False)
+
         self.input_shape = list(self.model.inputs[0].shape[1:])
-        self.base_model = Model(inputs=[self.model.layers[3].get_input_at(0)],
-                                outputs=[self.model.layers[3].layers[-1].output])
+        self.base_model = Model(inputs=[self.model.layers[2].get_input_at(0)],
+                                outputs=[self.model.layers[2].layers[-1].output])
+        self.classification_model = Model(inputs=[self.model.layers[3].get_input_at(0)],
+                                outputs=[self.model.layers[-1].output])
+        self.classification_model._make_predict_function()
         self.base_model._make_predict_function()
 
     def predict(self, image):
@@ -159,10 +171,8 @@ class TripletNet(EmbeddingNet):
         image_encoding_p = self.base_model(input_image_p)
         image_encoding_n = self.base_model(input_image_n)
 
-        merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n],
-                                    axis=-1, name='merged_layer')
-        self.model = Model(inputs=[input_image_a, input_image_p, input_image_n],
-                           outputs=merged_vector)
+        merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n],axis=-1, name='merged_layer')
+        self.model = Model(inputs=[input_image_a, input_image_p, input_image_n],outputs=merged_vector)
 
         print('Base model summary')
         self.base_model.summary()
@@ -170,15 +180,17 @@ class TripletNet(EmbeddingNet):
         print('Whole model summary')
         self.model.summary()
 
-        self.model.compile(loss=lac.triplet_loss(self.params_generator['margin']), 
-                                                 optimizer=self.params_train['optimizer'])
-
 
 class SiameseNet(EmbeddingNet):
 
     def __init__(self, params, training):
         super().__init__(params)
-        self._create_model_siamese()
+        
+        self.training = training
+
+        if self.training:
+            self._create_base_model()
+            self._create_model_siamese()
 
     def _create_model_siamese(self):
 
@@ -188,31 +200,29 @@ class SiameseNet(EmbeddingNet):
         image_encoding_1 = self.base_model(input_image_1)
         image_encoding_2 = self.base_model(input_image_2)
 
+        Cl_out1 = Lambda(lambda x: x, name='output_im1')
+        Cl_out2 = Lambda(lambda x: x, name='output_im2')
+
+        classification_output_1 = Cl_out1(self.classification_model(input_image_1))
+        classification_output_2 = Cl_out2(self.classification_model(input_image_2))
+
         if self.params_model['distance_type'] == 'l1':
-            L1_layer = Lambda(
-                lambda tensors: K.abs(tensors[0] - tensors[1]))
+            L1_layer = Lambda(lambda tensors: K.abs(tensors[0] - tensors[1]))
             distance = L1_layer([image_encoding_1, image_encoding_2])
 
-            prediction = Dense(units=1, activation='sigmoid')(distance)
-            metric = 'binary_accuracy'
+            embeddings_output = Dense(units=1, activation='sigmoid', name='output_siamese')(distance)
 
         elif self.params_model['distance_type'] == 'l2':
 
-            L2_layer = Lambda(
-                lambda tensors: K.sqrt(K.maximum(K.sum(K.square(tensors[0] - tensors[1]), axis=1, keepdims=True), K.epsilon())))
+            L2_layer = Lambda(lambda tensors: K.sqrt(K.maximum(K.sum(K.square(tensors[0] - tensors[1]), axis=1, keepdims=True), K.epsilon())))
             distance = L2_layer([image_encoding_1, image_encoding_2])
 
-            prediction = distance
-            metric = lac.accuracy
+            embeddings_output = distance
 
-        self.model = Model(
-            inputs=[input_image_1, input_image_2], outputs=prediction)
+        self.model = Model(inputs=[input_image_1, input_image_2], outputs=[embeddings_output, classification_output_1, classification_output_2])
 
         print('Base model summary')
         self.base_model.summary()
 
         print('Whole model summary')
         self.model.summary()
-
-        self.model.compile(loss=lac.contrastive_loss, metrics=[metric],
-                           optimizer=self.params_train['optimizer'])
