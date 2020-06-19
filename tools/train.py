@@ -123,7 +123,6 @@ def main():
         metric = {'output_siamese' : accuracy, 
                   'output_im1' : 'binary_accuracy', 
                   'output_im2' : 'binary_accuracy'}
-        # metric = accuracy
     else:
         model = TripletNet(cfg_params, training=True)
         train_generator = TripletsDataGenerator(embedding_model=model.base_model,
@@ -150,8 +149,6 @@ def main():
     if args.resume_from is not None:
         model.load_model(args.resume_from)
         
-    # model.load_model('/home/rauf/Desktop/sg_efficientnet-b3__simple_fold_0_005_0.9810.hdf5')
-    model.base_model.load_weights('/home/rauf/Desktop/sg_efficientnet-b3__simple_fold_0_005_0.9810.hdf5', by_name=True)
     if 'softmax' in cfg_params:
         params_softmax = cfg_params['softmax']
         params_save_paths = cfg_params['save_paths']
@@ -166,10 +163,6 @@ def main():
                                            callbacks=callbacks,
                                            verbose=1,
                                            use_multiprocessing=False)
-
-    # encoded_training_data = model.generate_encodings(data_loader,
-                        #  max_n_samples=50000000000000000, shuffle=False)
-    # model.save_encodings(encoded_training_data)
 
     if params_train['plot_history']:
         plot_grapths(history, plots_save_path)

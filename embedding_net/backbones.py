@@ -69,7 +69,6 @@ def get_backbone(input_shape,
         backbone_model = Model(
             inputs=[input_image], outputs=[x])
         x = Flatten()(x)
-        print(backbone_model.output)
         x = Dense(512, activation="relu")(x)
         x = Dropout(0.5)(x)
         encoded_output = Dense(encodings_len, activation='relu',
@@ -195,8 +194,7 @@ def pretrain_backbone_softmax(backbone_model, data_loader, params_softmax,  para
                         verbose=1, 
                         monitor=checkpoint_callback_monitor, 
                         save_best_only=True)]
-    # checkpoints_load_name = 'work_dirs/bengali_efficientnet/pretraining_model/weights/bengali_efficientnet_020_0.932969.h5'
-    # model.load_weights(checkpoints_load_name, by_name=True)
+                        
     history = model.fit_generator(train_generator,
                                 steps_per_epoch=steps_per_epoch,
                                 epochs=n_epochs,
