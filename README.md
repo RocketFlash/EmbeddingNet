@@ -12,14 +12,14 @@ git clone git@github.com:RocketFlash/EmbeddingNet.git
 
 ### Requirements
 
-- keras
-- tensorflow
+- tensorflow=2.0.0
 - scikit-learn
 - opencv
 - matplotlib
 - plotly - for interactive t-SNE plot visualization
 - [albumentations](https://github.com/albu/albumentations) - for online augmentation during training
 - [image-classifiers](https://github.com/qubvel/classification_models) - for different backbone models
+- [efficientnet](https://github.com/qubvel/efficientnet) - for efficientnet backbones
 - [keras-rectified-adam](https://github.com/CyberZHG/keras-radam) - for cool state-of-the-art optimization
 
 Requirements could be installed using the following command:
@@ -30,7 +30,13 @@ $ pip3 install -r requirements.txt
 
 # Train
 
-In the training dataset, the data for training and validation should be in separate folders, in each of which folders with images for each class. Dataset should have the following structure:
+There are two options for training your network: annotations files and data folding
+
+## Annotations files
+The simplest way to start training is to generate annotations csv files. Files must contain two columns: file path and class name. For example generate **train.csv** and **val.csv** that will contain two columns "image_id" and "label"
+
+## Data folding
+The first option is to split images into folders. In the training dataset, data for training and validation should be in separate folders, in each of which folders with images for each class. Dataset should have the following structure:
 
 ```
 Dataset
