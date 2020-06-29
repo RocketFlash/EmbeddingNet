@@ -170,7 +170,7 @@ def parse_params(filename='configs/road_signs.yml'):
     params_generator = cfg['GENERATOR']
     params_model = cfg['MODEL']
     params_train = cfg['TRAIN']
-    params_save_paths = cfg['SAVE_PATHS']
+    params_general = cfg['GENERAL']
     params_encodings = cfg['ENCODINGS']
 
     params_generator['input_shape'] = params_model['input_shape']
@@ -181,7 +181,7 @@ def parse_params(filename='configs/road_signs.yml'):
               'generator' : params_generator,
               'model' : params_model,
               'train' : params_train,
-              'save_paths': params_save_paths,
+              'general': params_general,
               'encodings' : params_encodings}
 
     if 'SOFTMAX_PRETRAINING' in cfg:

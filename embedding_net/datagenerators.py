@@ -13,7 +13,8 @@ import tensorflow as tf
 
 class ENDataLoader():
     def __init__(self, dataset_path,
-                       csv_file=None,
+                       train_csv_file=None,
+                       val_csv_file=None,
                        image_id_column = 'image_id',
                        label_column = 'label',
                        validate = True,
@@ -23,10 +24,10 @@ class ENDataLoader():
         self.class_files_paths = {}
         self.class_names = []
         
-        if csv_file is not None:
-            self._load_from_dataframe(csv_file, image_id_column, label_column)
+        if train_csv_file is not None:
+            self.class_files_paths = self._load_from_dataframe(train_csv_file, image_id_column, label_column)
         else:
-            self._load_from_directory()
+            self.class_files_paths = self._load_from_directory()
         
         self.n_classes = len(self.class_names)
         self.n_samples = {k: len(v) for k, v in self.class_files_paths.items()}
@@ -35,7 +36,11 @@ class ENDataLoader():
         self.val_ratio = val_ratio
 
         if self.validate:
-            self.train_data, self.val_data = self.split_train_val(self.val_ratio)
+            if val_csv_file is not None:
+                self.train_data = self.class_files_paths
+                self.val_data = self._load_from_dataframe(val_csv_file, image_id_column, label_column)
+            else:
+                self.train_data, self.val_data = self.split_train_val(self.val_ratio)
         else:
             self.train_data = self.class_files_paths
             self.val_data = {}
@@ -43,8 +48,6 @@ class ENDataLoader():
     def split_train_val(self, val_ratio):
         train_data = {}
         val_data = {}
-        print(len(self.class_files_paths['real']))
-        print(len(self.class_files_paths['fake']))
         for k, v in self.class_files_paths.items():
             train_d, val_d = train_test_split(v, test_size=val_ratio, random_state=42)
             train_data[k] = train_d
@@ -52,20 +55,22 @@ class ENDataLoader():
         return train_data, val_data
 
     def _load_from_dataframe(self, csv_file, image_id_column, label_column):
+        class_files_paths = {}
         dataframe = pd.read_csv(csv_file)
         self.class_names = list(dataframe[label_column].unique())
         for class_name in self.class_names:
             image_names = dataframe.loc[dataframe[label_column] == class_name][image_id_column]
             image_paths = [os.path.join(self.dataset_path, f) for f in image_names]
-            self.class_files_paths[class_name] = image_paths      
+            class_files_paths[class_name] = image_paths
+        return class_files_paths      
 
     def _load_from_directory(self):
+        class_files_paths = {}
         self.class_names = [f.name for f in os.scandir(self.dataset_path) if f.is_dir()]
         class_dir_paths = [f.path for f in os.scandir(self.dataset_path) if f.is_dir()]
 
         for class_name, class_dir_path in zip(self.class_names, class_dir_paths):
             subdirs = [f.path for f in os.scandir(class_dir_path) if f.is_dir()]
-            # self.class_files_paths[class_name] = []
             temp_list = []
             print(class_dir_path)
             if len(subdirs)>0:
@@ -81,7 +86,8 @@ class ENDataLoader():
                                         f.name.endswith('.png') and 
                                         not f.name.startswith('._'))]
                 temp_list.extend(class_image_paths)
-            self.class_files_paths[class_name] = temp_list 
+            class_files_paths[class_name] = temp_list
+        return class_files_paths
 
 
 class ENDataGenerator(Sequence):
@@ -157,8 +163,6 @@ class TripletsDataGenerator(ENDataGenerator):
         self.k_samples = k_samples
         self.margin = margin
         self.negative_selection_fn = modes[negatives_selection_mode]
-        self.session = K.get_session()
-        self.graph = tf.get_default_graph()
 
     def hardest_negative(self, loss_values, margin=0.5):
         hard_negative = np.argmax(loss_values)
@@ -187,9 +191,7 @@ class TripletsDataGenerator(ENDataGenerator):
         for idx, cl_img_idxs in enumerate(selected_images):
             images = self._get_images_set(selected_classes[idx], cl_img_idxs, with_aug=self.augmentations)
             all_images_list.append(images)
-            with self.session.as_default():
-                with self.graph.as_default():
-                    embeddings = self.embedding_model.predict(images)
+            embeddings = self.embedding_model.predict(images)
             all_embeddings_list.append(embeddings)
 
         all_embeddings = np.vstack(all_embeddings_list)
@@ -326,12 +328,6 @@ class SiameseDataGenerator(ENDataGenerator):
         selected_class = self.class_names[selected_class_idx]
         selected_class_n_elements = self.n_samples[selected_class] 
 
-        if selected_class == 'real':
-            t_id = 0
-            f_id = 1
-        else:
-            t_id = 1
-            f_id = 0
         indxs = np.random.randint(selected_class_n_elements, size=self.batch_size)
 
         with_aug = self.augmentations
@@ -343,8 +339,6 @@ class SiameseDataGenerator(ENDataGenerator):
             pairs[0][count, :, :, :] = imgs[0]
             pairs[1][count, :, :, :] = imgs[1]
             targets[i] = 1
-            targets1[i] = t_id
-            targets2[i] = t_id
             count += 1
 
         for i in range(n_same_class, self.batch_size):
@@ -357,14 +351,8 @@ class SiameseDataGenerator(ENDataGenerator):
             pairs[0][count, :, :, :] = imgs[0]
             pairs[1][count, :, :, :] = imgs[1]
             targets[i] = 0
-            targets1[i] = t_id
-            targets2[i] = f_id
             count += 1
-        return pairs, {'output_siamese' : targets, 
-                       'output_im1' : targets1, 
-                       'output_im2' : targets2}
-                        # 'model_1' : targets1,
-                        # 'model_1_1' : targets2})
+        return pairs, targets
 
     def __getitem__(self, index):
         return self.get_batch_pairs()

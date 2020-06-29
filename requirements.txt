@@ -1,7 +1,8 @@
 image-classifiers
-tensorflow-gpu==2.1.0
+tensorflow-gpu==2.0.0
 matplotlib
 albumentations
 scikit-learn
 opencv-python
 keras-rectified-adam
+efficientnet

@@ -120,7 +120,7 @@ def get_backbone(input_shape,
         base_model = Model(
             inputs=[backbone_model.input], outputs=[encoded_output])
 
-        base_model._make_predict_function()
+        # base_model._make_predict_function()
 
     return base_model, backbone_model
 

@@ -14,13 +14,18 @@ from .utils import get_image, get_images
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
 
+
+# TODO
+# [] - implement magnet loss
+# [] - finalize settings with l1 and l2 losses
+
 class EmbeddingNet:
 
     def __init__(self,  params):
         self.params_model = params['model']
         self.params_dataloader = params['dataloader']
         self.params_generator = params['generator']
-        self.params_save_paths = params['save_paths']
+        self.params_save_paths = params['general']
         self.params_train = params['train']
         if 'softmax' in params:
             self.params_softmax = params['softmax']
@@ -33,9 +38,6 @@ class EmbeddingNet:
 
     def _create_base_model(self):
         self.base_model, self.backbone_model = get_backbone(**self.params_model)
-        
-        # input_image = Input(self.params_model['input_shape'])
-        # output_base = self.base_model(input_image)
         output = Dense(units=1, activation='sigmoid', name='output_img')(self.base_model.layers[-1].output)
         self.classification_model = Model(inputs=[self.base_model.layers[0].input],outputs=[output])
     
@@ -85,12 +87,6 @@ class EmbeddingNet:
 
     def load_model(self, file_path):
         import efficientnet.tfkeras as efn
-        # from keras_radam import RAdam
-        # self.model = load_model(file_path,
-        #                         custom_objects={'contrastive_loss': lac.contrastive_loss,
-        #                                         'accuracy': lac.accuracy,
-        #                                         'loss_function': lac.triplet_loss(self.params_generator['margin']),
-        #                                         'RAdam': RAdam})
         self.model = load_model(file_path, compile=False)
 
         self.input_shape = list(self.model.inputs[0].shape[1:])
@@ -154,11 +150,11 @@ class TripletNet(EmbeddingNet):
 
     def __init__(self, params, training=False):
         super().__init__(params)
-        self._create_base_model()
 
         self.training = training
 
         if self.training:
+            self._create_base_model()
             self._create_model_triplet()
 
     

@@ -1,26 +1,27 @@
 MODEL:
-  input_shape :  [128, 128, 3]
+  input_shape :  [48, 48, 3]
   encodings_len: 256
   mode : 'triplet'
   distance_type : 'l1'
-  backbone_name : 'efficientnet-b5'
+  backbone_name : 'efficientnet-b0'
   backbone_weights : 'noisy-student'
   freeze_backbone : False
   embeddings_normalization: True
 
 DATALOADER:
-  dataset_path : '/home/rauf/datasets/bengali/pngs/train/'
-  csv_file : '/home/rauf/datasets/bengali/train_new.csv'
-  image_id_column : 'image_id'
-  label_column : 'grapheme_root'
+  dataset_path : '/home/rauf/datasets/RTSD/'
+  train_csv_file : '/home/rauf/datasets/RTSD/split_1/train.csv'
+  val_csv_file : '/home/rauf/datasets/RTSD/split_1/val.csv'
+  image_id_column : 'file_path'
+  label_column : 'class_name'
   validate : True
   val_ratio : 0.2
   
 GENERATOR:
   negatives_selection_mode : 'semihard'
-  k_classes: 3
+  k_classes: 10
   k_samples: 3
-  margin: 0.3
+  margin: 0.5
   batch_size : 8
   n_batches : 500
   augmentations : 'none'
@@ -28,7 +29,7 @@ GENERATOR:
 TRAIN:
   # optimizer parameters
   optimizer : 'radam'
-  learning_rate : 0.00001
+  learning_rate : 0.0001
   decay_factor : 0.99
   step_size : 1
 
@@ -50,13 +51,14 @@ TRAIN:
 #   steps_per_epoch : 1000
 #   n_epochs : 50
 
-SAVE_PATHS:
-  project_name : 'bengali_efn_b5'
-  work_dir : 'work_dirs/'
-
 ENCODINGS:
   # encodings parameters
   save_encodings : True
   centers_only: False
   max_num_samples_of_each_class : 30
   knn_k : 1
+
+GENERAL:
+  project_name : 'road_signs_efnb0'
+  work_dir : 'work_dirs/'
+  tensorboard_callback: False

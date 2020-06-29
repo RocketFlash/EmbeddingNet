@@ -1,6 +1,12 @@
 import os
+import sys
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.append(ROOT_DIR)
+
 import numpy as np
-from embedding_net.model_new import EmbeddingNet, TripletNet, SiameseNet
+from embedding_net.models import EmbeddingNet, TripletNet, SiameseNet
 from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from embedding_net.datagenerators import ENDataLoader, SimpleDataGenerator, TripletsDataGenerator, SimpleTripletsDataGenerator, SiameseDataGenerator
@@ -10,14 +16,12 @@ from embedding_net.losses_and_accuracies import contrastive_loss, triplet_loss, 
 import argparse
 from tensorflow import keras
 import tensorflow as tf
-from tensorflow.compat.v1.keras.backend import set_session
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a classificator')
     parser.add_argument('config', help='model config file path')
-    parser.add_argument(
-        '--resume_from', help='the checkpoint file to resume from')
+    parser.add_argument('--resume_from', help='the checkpoint file to resume from')
 
     args = parser.parse_args()
 
@@ -31,7 +35,7 @@ def create_save_folders(params):
     plots_save_path = os.path.join(work_dir_path, 'plots/')
     tensorboard_save_path = os.path.join(work_dir_path, 'tf_log/')
     tensorboard_pretrained_save_path = os.path.join(work_dir_path, 'pretraining_model/tf_log/')
-    weights_save_file_path = os.path.join(weights_save_path, 'best_' + params['project_name']+'_{epoch:03d}_{loss:03f}' + '.hdf5')
+    weights_save_file_path = os.path.join(weights_save_path, 'epoch_{epoch:03d}' + '.hdf5')
 
     os.makedirs(work_dir_path , exist_ok=True)
     os.makedirs(weights_save_path, exist_ok=True)
@@ -43,19 +47,6 @@ def create_save_folders(params):
     return tensorboard_save_path, weights_save_file_path, plots_save_path
 
 def main():
-    config = tf.ConfigProto(
-        device_count={'GPU': 1},
-        intra_op_parallelism_threads=1,
-        allow_soft_placement=True
-    )
-
-    config.gpu_options.allow_growth = True
-    # config.gpu_options.per_process_gpu_memory_fraction = 1
-
-    session = tf.Session(config=config)
-
-    set_session(session)
-
     print('LOAD PARAMETERS')
     args = parse_args()
     cfg_params = parse_params(args.config)
@@ -64,12 +55,11 @@ def main():
     params_dataloader = cfg_params['dataloader']
     params_generator = cfg_params['generator']
 
-    tensorboard_save_path, weights_save_file_path, plots_save_path = create_save_folders(cfg_params['save_paths'])
+    tensorboard_save_path, weights_save_file_path, plots_save_path = create_save_folders(cfg_params['general'])
 
 
-    cfg_params['save_paths']
-    work_dir_path = os.path.join(cfg_params['save_paths']['work_dir'],
-                                 cfg_params['save_paths']['project_name'])
+    work_dir_path = os.path.join(cfg_params['general']['work_dir'],
+                                 cfg_params['general']['project_name'])
     weights_save_path = os.path.join(work_dir_path, 'weights/')
     
 
@@ -83,7 +73,6 @@ def main():
         callback_monitor = 'loss'
 
     print('LOADING COMPLETED')
-
     callbacks = [
         LearningRateScheduler(lambda x: initial_lr *
                               decay_factor ** np.floor(x/step_size)),
@@ -92,12 +81,14 @@ def main():
         EarlyStopping(monitor=callback_monitor,
                       patience=10, 
                       verbose=1),
-        # TensorBoard(log_dir=tensorboard_save_path),
         ModelCheckpoint(filepath=weights_save_file_path,
                         monitor=callback_monitor, 
                         save_best_only=True,
                         verbose=1)
     ]
+
+    if cfg_params['general']['tensorboard_callback']:
+        callbacks.append(TensorBoard(log_dir=tensorboard_save_path))
 
     print('CREATE DATALOADER')
     data_loader = ENDataLoader(**params_dataloader)
@@ -116,13 +107,8 @@ def main():
                                                class_names=data_loader.class_names,
                                                val_gen = True,
                                                **params_generator)
-        losses = {'output_siamese' : contrastive_loss, 
-                  'output_im1' : tf.keras.losses.binary_crossentropy, 
-                  'output_im2' : tf.keras.losses.binary_crossentropy}
-
-        metric = {'output_siamese' : accuracy, 
-                  'output_im1' : 'binary_accuracy', 
-                  'output_im2' : 'binary_accuracy'}
+        losses = {'output_siamese' : contrastive_loss}
+        metric = {'output_siamese' : accuracy}
     else:
         model = TripletNet(cfg_params, training=True)
         train_generator = TripletsDataGenerator(embedding_model=model.base_model,
@@ -135,15 +121,12 @@ def main():
                                                     data_loader.class_names,
                                                     **params_generator)
         losses = triplet_loss(params_generator['margin'])
-        metric = 'accuracy'
+        metric = ['accuracy']
     print('DONE')
 
     print('COMPILE MODEL')
     model.model.compile(loss=losses, 
-                        optimizer=params_train['optimizer'],
-                        loss_weights = {'output_siamese' : 1, 
-                                        'output_im1' : 1, 
-                                        'output_im2' : 1}, 
+                        optimizer=params_train['optimizer'], 
                         metrics=metric)
 
     if args.resume_from is not None:
@@ -151,18 +134,18 @@ def main():
         
     if 'softmax' in cfg_params:
         params_softmax = cfg_params['softmax']
-        params_save_paths = cfg_params['save_paths']
+        params_save_paths = cfg_params['general']
         pretrain_backbone_softmax(model.backbone_model, 
                                   data_loader, 
                                   params_softmax,  
                                   params_save_paths)
 
     history = model.model.fit_generator(train_generator,
-                                           validation_data=val_generator,  
-                                           epochs=params_train['n_epochs'], 
-                                           callbacks=callbacks,
-                                           verbose=1,
-                                           use_multiprocessing=False)
+                                validation_data=val_generator,  
+                                epochs=params_train['n_epochs'], 
+                                callbacks=callbacks,
+                                verbose=1,
+                                use_multiprocessing=False)
 
     if params_train['plot_history']:
         plot_grapths(history, plots_save_path)
