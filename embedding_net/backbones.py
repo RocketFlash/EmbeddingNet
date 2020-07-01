@@ -178,7 +178,7 @@ def pretrain_backbone_softmax(backbone_model, data_loader, params_softmax,  para
         params_save_paths['work_dir'],
         params_save_paths['project_name'], 
         'pretraining_model/weights/',
-        params_save_paths['project_name']+'_{epoch:03d}_{val_acc:03f}' +'.h5')
+        params_save_paths['project_name']+'_{epoch:03d}' +'.h5')
 
     callbacks = [
         LearningRateScheduler(lambda x: learning_rate *

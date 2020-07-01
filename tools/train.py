@@ -86,13 +86,19 @@ def main():
                         save_best_only=True,
                         verbose=1)
     ]
+    
+    print('CREATE DATALOADER')
+    data_loader = ENDataLoader(**params_dataloader)
+    print('DATALOADER CREATED!')
 
     if cfg_params['general']['tensorboard_callback']:
         callbacks.append(TensorBoard(log_dir=tensorboard_save_path))
 
-    print('CREATE DATALOADER')
-    data_loader = ENDataLoader(**params_dataloader)
-    print('DATALOADER CREATED!')
+    if cfg_params['general']['wandb_callback']:
+        import wandb
+        from wandb.keras import WandbCallback
+        wandb.init() 
+        callbacks.append(WandbCallback(data_type="image", labels=data_loader.class_names))
 
     val_generator = None
 
@@ -124,14 +130,15 @@ def main():
         metric = ['accuracy']
     print('DONE')
 
+
+    if args.resume_from is not None:
+        model.load_model(args.resume_from)
+    
     print('COMPILE MODEL')
     model.model.compile(loss=losses, 
                         optimizer=params_train['optimizer'], 
                         metrics=metric)
 
-    if args.resume_from is not None:
-        model.load_model(args.resume_from)
-        
     if 'softmax' in cfg_params:
         params_softmax = cfg_params['softmax']
         params_save_paths = cfg_params['general']

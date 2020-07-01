@@ -25,7 +25,7 @@ class EmbeddingNet:
         self.params_model = params['model']
         self.params_dataloader = params['dataloader']
         self.params_generator = params['generator']
-        self.params_save_paths = params['general']
+        self.params_general = params['general']
         self.params_train = params['train']
         if 'softmax' in params:
             self.params_softmax = params['softmax']
@@ -33,6 +33,9 @@ class EmbeddingNet:
         self.base_model = None
         self.backbone_model = None
         self.model = None
+
+        self.workdir_path = os.path.join(self.params_general['work_dir'],
+                                         self.params_general['project_name'])
 
         self.encoded_training_data = {}
 
@@ -68,7 +71,7 @@ class EmbeddingNet:
                 data_list = data_list[:max_n_samples]
             
             data_paths += data_list
-            imgs = get_images(data_list)
+            imgs = get_images(data_list, self.params_model['input_shape'])
             encods = self._generate_encodings(imgs)
             for encod in encods:
                 data_encodings.append(encod)
@@ -81,21 +84,32 @@ class EmbeddingNet:
         return encoded_training_data
 
     def save_encodings(self, encoded_training_data,
+                             save_folder='./',
                              save_file_name='encodings.pkl'):
-        with open(save_file_name, "wb") as f:
+        with open(os.path.join(save_folder, save_file_name), "wb") as f:
             pickle.dump(encoded_training_data, f)
 
     def load_model(self, file_path):
         import efficientnet.tfkeras as efn
         self.model = load_model(file_path, compile=False)
-
         self.input_shape = list(self.model.inputs[0].shape[1:])
-        self.base_model = Model(inputs=[self.model.layers[2].get_input_at(0)],
-                                outputs=[self.model.layers[2].layers[-1].output])
-        self.classification_model = Model(inputs=[self.model.layers[3].get_input_at(0)],
-                                outputs=[self.model.layers[-1].output])
-        self.classification_model._make_predict_function()
-        self.base_model._make_predict_function()
+        self.base_model = Model(inputs=[self.model.get_layer('model').input],
+                                outputs=[self.model.get_layer('model').output])
+        # self.classification_model = Model(inputs=[self.model.layers[3].get_input_at(0)],
+        #                         outputs=[self.model.layers[-1].output])
+        # self.classification_model._make_predict_function()
+        # self.base_model._make_predict_function()
+
+
+    def save_base_model(self, save_folder):
+        self.base_model.save(f'{save_folder}base_model.h5')
+
+    def save_onnx(self, save_folder, save_name='base_model.onnx'):
+        os.environ["TF_KERAS"] = '1'
+        import efficientnet.tfkeras as efn
+        import keras2onnx
+        onnx_model = keras2onnx.convert_keras(self.base_model, self.base_model.name)
+        keras2onnx.save_model(onnx_model, os.path.join(save_folder, save_name))
 
     def predict(self, image):
         if type(image) is str:

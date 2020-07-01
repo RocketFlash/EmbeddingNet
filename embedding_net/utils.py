@@ -112,9 +112,9 @@ def plot_batch_simple(data, targets, class_names):
         class_names = [class_names[i] for i in indxs]
         
         for i in range(num_imgs):
-            full_img[:,i*img_w:(i+1)*img_w,:] = data[0][i,:,:,:]
-            cv2.putText(full_img, class_names[i], (img_w*i + 10, 20), cv2.FONT_HERSHEY_SIMPLEX,  
-                        0.5, (0, 255, 0), 1, cv2.LINE_AA)
+            full_img[:,i*img_w:(i+1)*img_w,:] = data[0][i,:,:,::-1]*255
+            cv2.putText(full_img, class_names[i], (img_w*i + 5, 20), cv2.FONT_HERSHEY_SIMPLEX,  
+                        0.2, (0, 255, 0), 1, cv2.LINE_AA)
         plt.figure(figsize = (20,2))
         plt.imshow(full_img)
         plt.show()
@@ -131,10 +131,10 @@ def plot_batch(data, targets):
     i = 0
     for img_idx, targ in zip(range(num_imgs), targets):
         for j in range(it_val):
-            img = cv2.cvtColor(data[j][img_idx].astype(
-                np.uint8), cv2.COLOR_BGR2RGB)
+            image = data[j][img_idx]*255
+            img = cv2.cvtColor(image.astype(np.uint8), cv2.COLOR_BGR2RGB)
             axs[i+j].imshow(img)
-            axs[i+j].set_title(targ)
+            # axs[i+j].set_title(targ)
         i += it_val
 
     plt.show()

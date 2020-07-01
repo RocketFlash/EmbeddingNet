@@ -115,4 +115,5 @@ plots/
 sub.csv
 core
 work_dirs/
+wandb/
 *.csv

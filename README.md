@@ -12,7 +12,7 @@ git clone git@github.com:RocketFlash/EmbeddingNet.git
 
 ### Requirements
 
-- tensorflow=2.0.0
+- tensorflow=2.2.0
 - scikit-learn
 - opencv
 - matplotlib
