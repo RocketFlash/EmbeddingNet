@@ -25,7 +25,12 @@ git clone git@github.com:RocketFlash/EmbeddingNet.git
 Requirements could be installed using the following command:
 
 ```bash
-$ pip3 install -r requirements.txt
+$ pip install -r requirements.txt
+```
+
+To use **wandb** install it with:
+```bash
+$ pip install wandb
 ```
 
 # Train
