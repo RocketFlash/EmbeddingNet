@@ -127,6 +127,8 @@ def main():
             gpu_ids_list = gpu_ids.split(',')
             n_gpu = len(gpu_ids_list)
         else:
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" 
+            os.environ["CUDA_VISIBLE_DEVICES"] = '0'
             n_gpu = 1
             print('Use single gpu mode')
         
