@@ -10,6 +10,8 @@ from sklearn.model_selection import train_test_split
 from .utils import get_image
 from tensorflow.keras import backend as K
 import tensorflow as tf
+import tqdm
+import pickle
 
 class ENDataLoader():
     def __init__(self, dataset_path,
@@ -18,14 +20,15 @@ class ENDataLoader():
                        image_id_column = 'image_id',
                        label_column = 'label',
                        validate = True,
-                       val_ratio = 0.1):
+                       val_ratio = 0.1,
+                       is_google=False):
 
         self.dataset_path = dataset_path
         self.class_files_paths = {}
         self.class_names = []
         
         if train_csv_file is not None:
-            self.class_files_paths = self._load_from_dataframe(train_csv_file, image_id_column, label_column)
+            self.class_files_paths = self._load_from_dataframe(train_csv_file, image_id_column, label_column, is_google)
         else:
             self.class_files_paths = self._load_from_directory()
         
@@ -38,7 +41,7 @@ class ENDataLoader():
         if self.validate:
             if val_csv_file is not None:
                 self.train_data = self.class_files_paths
-                self.val_data = self._load_from_dataframe(val_csv_file, image_id_column, label_column)
+                self.val_data = self._load_from_dataframe(val_csv_file, image_id_column, label_column, is_google)
             else:
                 self.train_data, self.val_data = self.split_train_val(self.val_ratio)
         else:
@@ -54,14 +57,33 @@ class ENDataLoader():
             val_data[k] = val_d
         return train_data, val_data
 
-    def _load_from_dataframe(self, csv_file, image_id_column, label_column):
+    def _load_from_dataframe(self, csv_file, image_id_column, label_column, is_google):
         class_files_paths = {}
+
+        # Load data from file if it's already created
+        os.makedirs('tmp' , exist_ok=True)
+        if os.path.isfile('tmp/data.pickle'):
+            print('LOAD DATA FROM FILE')
+            with open('tmp/data.pickle', 'rb') as f:
+                class_files_paths = pickle.load(f)
+            self.class_names = list(class_files_paths.keys())
+            print('LOADING DATA FROM FILE COMPLETED')
+            return class_files_paths
+
         dataframe = pd.read_csv(csv_file)
         self.class_names = list(dataframe[label_column].unique())
-        for class_name in self.class_names:
+
+        for class_name in tqdm.tqdm(self.class_names):
             image_names = dataframe.loc[dataframe[label_column] == class_name][image_id_column]
-            image_paths = [os.path.join(self.dataset_path, f) for f in image_names]
+            if is_google:
+                image_paths = [os.path.join(self.dataset_path,f'{f[0]}/{f[1]}/{f[2]}/', f+'.jpg') for f in image_names]
+            else:
+                image_paths = [os.path.join(self.dataset_path, f) for f in image_names]
             class_files_paths[class_name] = image_paths
+
+        # Save data to file for fast loading
+        with open('tmp/data.pickle', 'wb') as f:
+            pickle.dump(class_files_paths, f)
         return class_files_paths      
 
     def _load_from_directory(self):
@@ -69,10 +91,9 @@ class ENDataLoader():
         self.class_names = [f.name for f in os.scandir(self.dataset_path) if f.is_dir()]
         class_dir_paths = [f.path for f in os.scandir(self.dataset_path) if f.is_dir()]
 
-        for class_name, class_dir_path in zip(self.class_names, class_dir_paths):
+        for class_name, class_dir_path in tqdm.tqdm(zip(self.class_names, class_dir_paths)):
             subdirs = [f.path for f in os.scandir(class_dir_path) if f.is_dir()]
             temp_list = []
-            print(class_dir_path)
             if len(subdirs)>0:
                 for subdir in subdirs:
                     class_image_paths = [f.path for f in os.scandir(subdir) if f.is_file() and
@@ -181,8 +202,7 @@ class TripletsDataGenerator(ENDataGenerator):
         selected_classes_idxs = np.random.choice(self.n_classes, size=self.k_classes, replace=False)
         selected_classes = [self.class_names[cl] for cl in selected_classes_idxs]
         selected_classes_n_elements = [self.n_samples[cl] for cl in selected_classes]
-
-        selected_images = [np.random.choice(cl_n, size=self.k_samples, replace=False) for cl_n in selected_classes_n_elements]
+        selected_images = [np.random.choice(cl_n, size=self.k_samples, replace=True) for cl_n in selected_classes_n_elements]
 
         all_embeddings_list = []
         all_images_list = []

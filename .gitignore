@@ -117,3 +117,5 @@ core
 work_dirs/
 wandb/
 *.csv
+tmp/
+configs/google_embeddings.yml

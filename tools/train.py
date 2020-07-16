@@ -15,7 +15,10 @@ from embedding_net.backbones import pretrain_backbone_softmax
 from embedding_net.losses_and_accuracies import contrastive_loss, triplet_loss, accuracy
 import argparse
 from tensorflow import keras
+from tensorflow.keras.utils import multi_gpu_model
 import tensorflow as tf
+
+
 
 
 def parse_args():
@@ -101,7 +104,6 @@ def main():
         callbacks.append(WandbCallback(data_type="image", labels=data_loader.class_names))
 
     val_generator = None
-
     print('CREATE MODEL AND DATA GENETATORS')
     if params_model['mode'] == 'siamese':
         model = SiameseNet(cfg_params, training=True)
@@ -116,7 +118,25 @@ def main():
         losses = {'output_siamese' : contrastive_loss}
         metric = {'output_siamese' : accuracy}
     else:
+        if cfg_params['general']['gpu_ids']:
+            print('Multiple gpu mode')
+            gpu_ids = cfg_params['general']['gpu_ids']
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" 
+            os.environ["CUDA_VISIBLE_DEVICES"] = gpu_ids
+            print(f'Using gpu ids: {gpu_ids}')
+            gpu_ids_list = gpu_ids.split(',')
+            n_gpu = len(gpu_ids_list)
+        else:
+            n_gpu = 1
+            print('Use single gpu mode')
+        
         model = TripletNet(cfg_params, training=True)
+        if n_gpu>1:
+            strategy = tf.distribute.MirroredStrategy()
+            with strategy.scope():
+                model.base_model = multi_gpu_model(model.base_model, gpus=n_gpu)
+            # model.base_model = tf.keras.utils.multi_gpu_model(model.base_model, gpus=n_gpu)
+
         train_generator = TripletsDataGenerator(embedding_model=model.base_model,
                                             class_files_paths=data_loader.train_data,
                                             class_names=data_loader.class_names,

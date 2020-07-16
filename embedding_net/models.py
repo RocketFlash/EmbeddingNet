@@ -184,9 +184,6 @@ class TripletNet(EmbeddingNet):
         merged_vector = concatenate([image_encoding_a, image_encoding_p, image_encoding_n],axis=-1, name='merged_layer')
         self.model = Model(inputs=[input_image_a, input_image_p, input_image_n],outputs=merged_vector)
 
-        print('Base model summary')
-        self.base_model.summary()
-
         print('Whole model summary')
         self.model.summary()
 
