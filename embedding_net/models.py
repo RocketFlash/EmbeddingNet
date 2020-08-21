@@ -92,9 +92,10 @@ class EmbeddingNet:
     def load_model(self, file_path):
         import efficientnet.tfkeras as efn
         self.model = load_model(file_path, compile=False)
+        model_layers = [x for x in self.model.layers[::-1] if isinstance(x, Model)]
         self.input_shape = list(self.model.inputs[0].shape[1:])
-        self.base_model = Model(inputs=[self.model.get_layer('model').input],
-                                outputs=[self.model.get_layer('model').output])
+        self.base_model = Model(inputs=[model_layers[0].input],
+                                outputs=[model_layers[0].output])
         # self.classification_model = Model(inputs=[self.model.layers[3].get_input_at(0)],
         #                         outputs=[self.model.layers[-1].output])
         # self.classification_model._make_predict_function()
