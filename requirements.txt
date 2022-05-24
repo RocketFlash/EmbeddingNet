@@ -1,5 +1,5 @@
 image-classifiers
-tensorflow-gpu==2.2.0
+tensorflow-gpu==2.6.4
 matplotlib
 albumentations
 scikit-learn
