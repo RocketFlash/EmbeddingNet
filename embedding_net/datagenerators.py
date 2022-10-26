@@ -26,12 +26,12 @@ class ENDataLoader():
         self.dataset_path = dataset_path
         self.class_files_paths = {}
         self.class_names = []
-        
+
         if train_csv_file is not None:
             self.class_files_paths = self._load_from_dataframe(train_csv_file, image_id_column, label_column, is_google)
         else:
             self.class_files_paths = self._load_from_directory()
-        
+
         self.n_classes = len(self.class_names)
         self.n_samples = {k: len(v) for k, v in self.class_files_paths.items()}
 
@@ -94,7 +94,7 @@ class ENDataLoader():
         for class_name, class_dir_path in tqdm.tqdm(zip(self.class_names, class_dir_paths)):
             subdirs = [f.path for f in os.scandir(class_dir_path) if f.is_dir()]
             temp_list = []
-            if len(subdirs)>0:
+            if subdirs:
                 for subdir in subdirs:
                     class_image_paths = [f.path for f in os.scandir(subdir) if f.is_file() and
                                         (f.name.endswith('.jpg') or
@@ -134,10 +134,7 @@ class ENDataGenerator(Sequence):
         self.n_samples = {k: len(v) for k, v in self.class_files_paths.items()}
 
     def __len__(self):
-        if self.val_gen:
-            return self.n_batches_val
-        else:
-            return self.n_batches
+        return self.n_batches_val if self.val_gen else self.n_batches
 
     def __getitem__(self, index):
         pass       
@@ -207,7 +204,7 @@ class TripletsDataGenerator(ENDataGenerator):
         all_embeddings_list = []
         all_images_list = []
 
-        
+
         for idx, cl_img_idxs in enumerate(selected_images):
             images = self._get_images_set(selected_classes[idx], cl_img_idxs, with_aug=self.augmentations)
             all_images_list.append(images)
@@ -243,7 +240,7 @@ class TripletsDataGenerator(ENDataGenerator):
                     triplet_negatives.append(all_images[hard_negative])
                     targets.append(1)
 
-        if len(triplet_anchors) == 0:
+        if not triplet_anchors:
             triplet_anchors.append(all_images[anchor_positive[0]])
             triplet_positives.append(all_images[anchor_positive[1]])
             triplet_negatives.append(all_images[negative_indices[0]])
@@ -282,9 +279,7 @@ class SimpleTripletsDataGenerator(ENDataGenerator):
                     np.zeros((self.batch_size, self.input_shape[0], self.input_shape[1], 3))]
         targets = np.zeros((self.batch_size,))
 
-        count = 0
-
-        for i in range(self.batch_size):
+        for count, i in enumerate(range(self.batch_size)):
             selected_class_idx = random.randrange(0, self.n_classes)
             selected_class = self.class_names[selected_class_idx]
             selected_class_n_elements = self.n_samples[selected_class]
@@ -306,8 +301,6 @@ class SimpleTripletsDataGenerator(ENDataGenerator):
             triplets[1][count, :, :, :] = imgs[1]
             triplets[2][count, :, :, :] = imgs[2]
             targets[i] = 1
-            count += 1
-
         return triplets, targets
 
     def __getitem__(self, index):
@@ -398,9 +391,8 @@ class SimpleDataGenerator(ENDataGenerator):
             np.zeros((self.batch_size, self.input_shape[0], self.input_shape[1], 3))]
         targets = np.zeros((self.batch_size, self.n_classes))
 
-        count = 0
         with_aug = self.augmentations
-        for i in range(self.batch_size):
+        for count, i in enumerate(range(self.batch_size)):
             selected_class_idx = random.randrange(0, self.n_classes)
             selected_class = self.class_names[selected_class_idx]
             selected_class_n_elements = len(self.class_files_paths[selected_class])
@@ -410,8 +402,6 @@ class SimpleDataGenerator(ENDataGenerator):
             img = self._get_images_set([selected_class], [indx], with_aug=with_aug)
             images[0][count, :, :, :] = img[0]
             targets[i][selected_class_idx] = 1
-            count += 1
-
         return images, targets
 
     def __getitem__(self, index):

@@ -45,8 +45,7 @@ class EmbeddingNet:
         self.classification_model = Model(inputs=[self.base_model.layers[0].input],outputs=[output])
     
     def _generate_encodings(self, imgs):
-        encodings = self.base_model.predict(imgs)
-        return encodings
+        return self.base_model.predict(imgs)
         
 
     def train_embeddings_classifier(self, data_loader,
@@ -61,15 +60,13 @@ class EmbeddingNet:
     def generate_encodings(self, data_loader, max_n_samples=10,  
                                  shuffle=True):
         data_paths, data_labels, data_encodings = [], [], []
-        encoded_training_data = {}
-
         for class_name in data_loader.class_names:
             data_list = data_loader.train_data[class_name]
             if len(data_list)>max_n_samples:
                 if shuffle:
                     random.shuffle(data_list)
                 data_list = data_list[:max_n_samples]
-            
+
             data_paths += data_list
             imgs = get_images(data_list, self.params_model['input_shape'])
             encods = self._generate_encodings(imgs)
@@ -77,11 +74,11 @@ class EmbeddingNet:
                 data_encodings.append(encod)
                 data_labels.append(class_name)
 
-        encoded_training_data['paths'] = data_paths
-        encoded_training_data['labels'] = data_labels
-        encoded_training_data['encodings'] = np.squeeze(np.array(data_encodings))
-        
-        return encoded_training_data
+        return {
+            'paths': data_paths,
+            'labels': data_labels,
+            'encodings': np.squeeze(np.array(data_encodings)),
+        }
 
     def save_encodings(self, encoded_training_data,
                              save_folder='./',
@@ -113,23 +110,16 @@ class EmbeddingNet:
         keras2onnx.save_model(onnx_model, os.path.join(save_folder, save_name))
 
     def predict(self, image):
-        if type(image) is str:
-            img = cv2.imread(image)
-        else:
-            img = image
+        img = cv2.imread(image) if type(image) is str else image
         img = cv2.resize(img, (self.params_model['input_shape'][0], 
                                self.params_model['input_shape'][1]))
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
         distances = self.calculate_distances(encoding)
         max_element = np.argmin(distances)
-        predicted_label = self.encoded_training_data['labels'][max_element]
-        return predicted_label
+        return self.encoded_training_data['labels'][max_element]
 
     def predict_knn(self, image, with_top5=False):
-        if type(image) is str:
-            img = cv2.imread(image)
-        else:
-            img = image
+        img = cv2.imread(image) if type(image) is str else image
         img = cv2.resize(img, (self.input_shape[0], self.input_shape[1]))
 
         encoding = self.base_model.predict(np.expand_dims(img, axis=0))
@@ -145,8 +135,6 @@ class EmbeddingNet:
         correct_top1 = 0
         correct_top5 = 0
 
-        accuracies = {'top1':0,
-                      'top5':0 }
         total_n_of_images = len(data_loader.images_paths['val'])
         for img_path, img_label in zip(data_loader.images_paths['val'],
                                        data_loader.images_labels['val']):
@@ -155,10 +143,10 @@ class EmbeddingNet:
                 correct_top1 += 1
             if img_label in prediction_top5:
                 correct_top5 += 1
-        accuracies['top1'] = correct_top1/total_n_of_images
-        accuracies['top5'] = correct_top5/total_n_of_images
-
-        return accuracies
+        return {
+            'top1': correct_top1 / total_n_of_images,
+            'top5': correct_top5 / total_n_of_images,
+        }
 
 
 class TripletNet(EmbeddingNet):
