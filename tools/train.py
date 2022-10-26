@@ -26,9 +26,7 @@ def parse_args():
     parser.add_argument('config', help='model config file path')
     parser.add_argument('--resume_from', help='the checkpoint file to resume from')
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 def create_save_folders(params):
     work_dir_path = os.path.join(params['work_dir'], params['project_name'])
@@ -64,17 +62,13 @@ def main():
     work_dir_path = os.path.join(cfg_params['general']['work_dir'],
                                  cfg_params['general']['project_name'])
     weights_save_path = os.path.join(work_dir_path, 'weights/')
-    
+
 
     initial_lr = params_train['learning_rate']
     decay_factor = params_train['decay_factor']
     step_size = params_train['step_size']
 
-    if params_dataloader['validate']:
-        callback_monitor = 'val_loss'
-    else:
-        callback_monitor = 'loss'
-
+    callback_monitor = 'val_loss' if params_dataloader['validate'] else 'loss'
     print('LOADING COMPLETED')
     callbacks = [
         LearningRateScheduler(lambda x: initial_lr *
@@ -89,7 +83,7 @@ def main():
                         save_best_only=True,
                         verbose=1)
     ]
-    
+
     print('CREATE DATALOADER')
     data_loader = ENDataLoader(**params_dataloader)
     print('DATALOADER CREATED!')
@@ -131,7 +125,7 @@ def main():
             os.environ["CUDA_VISIBLE_DEVICES"] = '0'
             n_gpu = 1
             print('Use single gpu mode')
-        
+
         model = TripletNet(cfg_params, training=True)
         if n_gpu>1:
             strategy = tf.distribute.MirroredStrategy()
@@ -155,7 +149,7 @@ def main():
 
     if args.resume_from is not None:
         model.load_model(args.resume_from)
-    
+
     print('COMPILE MODEL')
     model.model.compile(loss=losses, 
                         optimizer=params_train['optimizer'], 

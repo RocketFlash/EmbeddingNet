@@ -22,4 +22,4 @@ if __name__ == "__main__":
     model.load_encodings(encodings_path)
 
     model_prediction = model.predict(image_path)
-    print('Model prediction: {}'.format(model_prediction))
+    print(f'Model prediction: {model_prediction}')

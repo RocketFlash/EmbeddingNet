@@ -13,7 +13,7 @@ from .augmentations import get_aug
 def get_image(img_path, input_shape=None):
     img = cv2.imread(img_path)
     if img is None:
-        print('image is not exist ' + img_path)
+        print(f'image is not exist {img_path}')
         return None
     if input_shape:
         img = cv2.resize(
@@ -39,7 +39,7 @@ def plot_tsne(encodings_path, save_plot_dir, show=True):
     tsne = TSNE()
     tsne_train = tsne.fit_transform(encodings['encodings'])
     fig, ax = plt.subplots(figsize=(16, 16))
-    for i, l in enumerate(labels):
+    for l in labels:
         xs = tsne_train[np.array(encodings['labels']) == l, 0]
         ys = tsne_train[np.array(encodings['labels']) == l, 1]
         ax.scatter(xs, ys, label=l)
@@ -55,7 +55,7 @@ def plot_tsne(encodings_path, save_plot_dir, show=True):
     if show:
         fig.show()
 
-    fig.savefig("{}{}.png".format(save_plot_dir, 'tsne.png'))
+    fig.savefig(f"{save_plot_dir}tsne.png.png")
 
 
 def plot_tsne_interactive(encodings):
@@ -66,12 +66,11 @@ def plot_tsne_interactive(encodings):
     tsne = TSNE()
     tsne_train = tsne.fit_transform(encodings['encodings'])
     fig = go.Figure()
-    for i, l in enumerate(labels):
+    for l in labels:
         xs = tsne_train[np.array(encodings['labels']) == l, 0]
         ys = tsne_train[np.array(encodings['labels']) == l, 1]
-        color = 'rgba({},{},{},{})'.format(int(255*np.random.rand()),
-                                           int(255*np.random.rand()),
-                                           int(255*np.random.rand()), 0.8)
+        color = f'rgba({int(255 * np.random.rand())},{int(255 * np.random.rand())},{int(255 * np.random.rand())},0.8)'
+
         fig.add_trace(go.Scatter(x=xs,
                                  y=ys,
                                  mode='markers',
@@ -97,11 +96,10 @@ def plot_grapths(history, save_path):
         fig, ax = plt.subplots()
         ax.plot(t, v)
 
-        ax.set(xlabel='epoch', ylabel='{}'.format(k),
-               title='{}'.format(k))
+        ax.set(xlabel='epoch', ylabel=f'{k}', title=f'{k}')
         ax.grid()
 
-        fig.savefig("{}{}.png".format(save_path, k))
+        fig.savefig(f"{save_path}{k}.png")
 
 def plot_batch_simple(data, targets, class_names):
         num_imgs = data[0].shape[0]
@@ -110,7 +108,7 @@ def plot_batch_simple(data, targets, class_names):
         full_img = np.zeros((img_h,num_imgs*img_w,3), dtype=np.uint8)
         indxs = np.argmax(targets, axis=1)
         class_names = [class_names[i] for i in indxs]
-        
+
         for i in range(num_imgs):
             full_img[:,i*img_w:(i+1)*img_w,:] = data[0][i,:,:,::-1]*255
             cv2.putText(full_img, class_names[i], (img_w*i + 5, 20), cv2.FONT_HERSHEY_SIMPLEX,  
@@ -142,15 +140,14 @@ def plot_batch(data, targets):
 
 def get_optimizer(name, learning_rate):
     if name == 'adam':
-        optimizer = optimizers.Adam(lr=learning_rate)
+        return optimizers.Adam(lr=learning_rate)
     elif name == 'rms_prop':
-        optimizer = optimizers.RMSprop(lr=learning_rate)
+        return optimizers.RMSprop(lr=learning_rate)
     elif name == 'radam':
         from keras_radam import RAdam
-        optimizer = RAdam(learning_rate)
+        return RAdam(learning_rate)
     else:
-        optimizer = optimizers.SGD(lr=learning_rate)
-    return optimizer
+        return optimizers.SGD(lr=learning_rate)
 
 
 def parse_params(filename='configs/road_signs.yml'):
@@ -192,6 +189,6 @@ def parse_params(filename='configs/road_signs.yml'):
                               cfg['SOFTMAX_PRETRAINING']['learning_rate'])
         params_softmax['optimizer'] = softmax_optimizer
         params['softmax'] =  params_softmax
-        
+
 
     return params
